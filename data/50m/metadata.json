@@ -1,0 +1,13 @@
+{
+  "dataset": "openwebtext",
+  "hf_name": "Skylion007/openwebtext",
+  "subset": "",
+  "split": "train",
+  "tokenizer": "gpt2",
+  "vocab_size": 50257,
+  "total_tokens": 1000000000,
+  "total_docs": 884788,
+  "num_shards": 10,
+  "shard_size": 100000000,
+  "dtype": "uint16"
+}

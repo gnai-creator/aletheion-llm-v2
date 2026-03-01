@@ -1,0 +1,14 @@
+# ~10M params - Validacao rapida
+vocab_size: 32000
+d_model: 256
+n_heads: 4
+n_layers: 6
+d_ff: 1024
+max_seq_len: 512
+dropout: 0.1
+batch_size: 32
+learning_rate: 0.0006
+warmup_steps: 200
+total_tokens: 200_000_000
+mixed_precision: none
+gradient_accumulation_steps: 1

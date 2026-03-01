@@ -1,0 +1,13 @@
+{
+  "dataset": "tinystories",
+  "hf_name": "roneneldan/TinyStories",
+  "subset": "",
+  "split": "train",
+  "tokenizer": "gpt2",
+  "vocab_size": 50257,
+  "total_tokens": 200000000,
+  "total_docs": 890964,
+  "num_shards": 2,
+  "shard_size": 100000000,
+  "dtype": "uint16"
+}

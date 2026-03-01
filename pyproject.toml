@@ -1,0 +1,39 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "aletheion-llm-v2"
+version = "0.1.0"
+description = "LLM com DRM/MAD/VI/MPC como nn.Modules treinaveis - tomografia epistemica por token"
+readme = "README.md"
+license = {text = "Proprietary"}
+requires-python = ">=3.10"
+authors = [
+    {name = "Felipe Maya Muniz", email = "felipemuniz.grsba@gmail.com"}
+]
+
+dependencies = [
+    "torch>=2.1.0",
+    "pyyaml>=6.0",
+    "tqdm>=4.65.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4.0",
+    "pytest-cov>=4.1.0",
+]
+data = [
+    "datasets>=2.14.0",
+    "tiktoken>=0.5.0",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]

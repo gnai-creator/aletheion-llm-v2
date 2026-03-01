@@ -1,0 +1,18 @@
+# ~7B params - Llama-2-7B equivalent
+vocab_size: 32000
+d_model: 4096
+n_heads: 32
+n_layers: 32
+d_ff: 11008
+max_seq_len: 4096
+dropout: 0.0
+batch_size: 4
+learning_rate: 0.0003
+warmup_steps: 2000
+total_tokens: 1_000_000_000_000
+mixed_precision: bf16
+gradient_accumulation_steps: 32
+gradient_checkpointing: true
+distributed: true
+fsdp: true
+fsdp_sharding: full
