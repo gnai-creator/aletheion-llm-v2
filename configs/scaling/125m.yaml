@@ -1,5 +1,5 @@
 # ~125M params - GPT-2 Small equivalent
-vocab_size: 32000
+vocab_size: 50257
 d_model: 768
 n_heads: 12
 n_layers: 12

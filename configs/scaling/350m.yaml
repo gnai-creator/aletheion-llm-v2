@@ -1,5 +1,5 @@
 # ~350M params - GPT-2 Medium equivalent
-vocab_size: 32000
+vocab_size: 50257
 d_model: 1024
 n_heads: 16
 n_layers: 24

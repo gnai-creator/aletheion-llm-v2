@@ -1,5 +1,5 @@
 # ~7B params - Llama-2-7B equivalent
-vocab_size: 32000
+vocab_size: 50257
 d_model: 4096
 n_heads: 32
 n_layers: 32

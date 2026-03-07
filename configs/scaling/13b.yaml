@@ -1,5 +1,5 @@
 # ~13B params - Llama-2-13B equivalent
-vocab_size: 32000
+vocab_size: 50257
 d_model: 5120
 n_heads: 40
 n_layers: 40

@@ -1,5 +1,5 @@
 # ~50M params - Baseline funcional
-vocab_size: 32000
+vocab_size: 50257
 d_model: 512
 n_heads: 8
 n_layers: 8

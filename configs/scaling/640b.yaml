@@ -1,6 +1,6 @@
 # ~640B params - Maximum scale
 # Params estimate: 12 * 128 * 20480^2 ≈ 644B
-vocab_size: 32000
+vocab_size: 50257
 d_model: 20480
 n_heads: 160
 n_layers: 128

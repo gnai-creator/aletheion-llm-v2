@@ -1,6 +1,6 @@
 # ~400B params - Ultra frontier scale
 # Params estimate: 12 * 96 * 18432^2 ≈ 391B
-vocab_size: 32000
+vocab_size: 50257
 d_model: 18432
 n_heads: 144
 n_layers: 96

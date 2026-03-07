@@ -1,5 +1,5 @@
 # ~10M params - Validacao rapida
-vocab_size: 32000
+vocab_size: 50257
 d_model: 256
 n_heads: 4
 n_layers: 6
