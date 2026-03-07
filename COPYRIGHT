@@ -1,0 +1,29 @@
+Copyright (C) 2025-2026 Felipe Maya Muniz
+Email: felipemuniz.grsba@gmail.com
+
+Todos os direitos reservados conforme os termos da licenca aplicavel.
+
+Este software e licenciado sob licenca dual:
+
+  1. GNU Affero General Public License v3.0 ou posterior (AGPL-3.0-or-later)
+     Ver arquivo LICENSE para o texto completo.
+
+  2. Licenca Comercial (mediante contrato)
+     Ver arquivo LICENSE-COMMERCIAL.md para detalhes.
+
+O uso deste software implica aceitacao de uma das licencas acima.
+
+---
+
+Componentes de terceiros incluidos neste projeto estao sujeitos as suas
+proprias licencas:
+
+  - PyTorch (BSD-3-Clause) - https://github.com/pytorch/pytorch
+  - tiktoken (MIT) - https://github.com/openai/tiktoken
+  - datasets (Apache-2.0) - https://github.com/huggingface/datasets
+  - sentencepiece (Apache-2.0) - https://github.com/google/sentencepiece
+  - PyYAML (MIT) - https://github.com/yaml/pyyaml
+  - tqdm (MIT/MPL-2.0) - https://github.com/tqdm/tqdm
+
+Nenhuma das licencas de terceiros acima impoe restricoes incompativeis
+com a AGPL-3.0 ou com a licenca comercial.

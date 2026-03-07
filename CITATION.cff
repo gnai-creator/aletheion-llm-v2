@@ -1,0 +1,28 @@
+cff-version: 1.2.0
+message: "Se voce usar este software, por favor cite-o como abaixo."
+type: software
+title: "Aletheion LLM v2"
+abstract: >-
+  Decoder-only Large Language Model com sistema epistemico integrado
+  como nn.Modules treinaveis. Cada token produz tomografia epistemica
+  completa no manifold Riemanniano 5D, incluindo incerteza (Q1/Q2),
+  confianca MAD Bayesiana, vetor de intencionalidade, controle preditivo
+  MPC e 11 sub-heads cognitivos com 13 funcoes de perda.
+authors:
+  - family-names: "Muniz"
+    given-names: "Felipe Maya"
+    email: "felipemuniz.grsba@gmail.com"
+version: "0.1.0"
+date-released: "2026-02-28"
+license: "AGPL-3.0-or-later"
+repository-code: "https://github.com/gnai-creator/aletheion-llm-v2"
+keywords:
+  - large-language-model
+  - epistemic-uncertainty
+  - riemannian-manifold
+  - model-predictive-control
+  - continual-learning
+  - neural-epistemology
+  - bayesian-confidence
+  - intentionality-vector
+  - decoder-only-transformer
