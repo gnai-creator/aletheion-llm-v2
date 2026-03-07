@@ -1,15 +1,16 @@
 # ~350M params - Otimizado para RTX 4090 (24GB VRAM)
 #
-# Estimativa de memoria:
+# Estimativa de memoria (batch_size=4):
 #   Modelo bf16: ~670MB
-#   Optimizer AdamW (fp32 states): ~4.0GB
-#   Activations (com grad checkpointing): ~2.0GB
+#   Optimizer AdamW (fp32 states): ~2.8GB
 #   Gradients bf16: ~670MB
+#   Activations (com grad checkpointing): ~3-4GB
 #   Overhead PyTorch: ~1.5GB
-#   Total estimado: ~8.9GB (sobra ~15GB para batch maior)
+#   Total estimado: ~9-10GB
 #
-# Throughput estimado: ~12K-18K tokens/s com torch.compile
-# Tempo para 7B tokens: ~4-5 dias
+# Effective batch: batch_size(4) * grad_accum(16) = 64 sequences = 65536 tokens/step
+# Throughput estimado: ~8-12K tokens/s (sem torch.compile no Windows)
+# Tempo para 7B tokens: ~7-10 dias
 
 # --- Modelo ---
 # vocab_size sera auto-detectado do metadata dos dados.
@@ -23,7 +24,7 @@ max_seq_len: 1024
 dropout: 0.1
 
 # --- Training ---
-batch_size: 16
+batch_size: 4
 learning_rate: 0.0003
 weight_decay: 0.01
 warmup_steps: 2000
@@ -35,7 +36,7 @@ save_interval: 1000
 
 # --- Performance RTX 4090 ---
 mixed_precision: bf16
-gradient_accumulation_steps: 4
+gradient_accumulation_steps: 16  # effective batch = 4 * 16 = 64
 gradient_checkpointing: true
 compile_model: false  # Triton nao disponivel no Windows; true para Linux
 
