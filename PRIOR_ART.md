@@ -130,6 +130,16 @@ os conceitos originais se apoiam.
   Aprendizado contrastivo. Adaptado no ATIC para anti-colapso metacognitivo
   com head contrastivo dual, que e original.
 
+### Smooth Transition Penalty (STP)
+
+- **Guo et al. (2025)** - "Straight-Through Meets Sparse Recovery" (arXiv:2602.22617)
+  Propoe penalidade de transicao suave no espaco de hidden states.
+  Para triplets (s, r, t) com s < r < t, a loss e:
+  `L_stp = 1 - cos_sim(h_t - h_r, h_r - h_s)`.
+  Encoraja trajetorias localmente lineares no espaco latente,
+  melhorando suavidade de representacao e estabilidade de treinamento.
+  Integrado no AletheionV2 como 14o componente da loss composta.
+
 ---
 
 ## Resumo

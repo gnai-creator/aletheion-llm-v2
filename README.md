@@ -19,7 +19,7 @@ Cada token produz uma **tomografia epistemica** completa no manifold Riemanniano
 - [Testes](#testes)
 - [Treinamento](#treinamento)
 - [Configs de Escala](#configs-de-escala)
-- [Loss Composta (13 componentes)](#loss-composta-13-componentes)
+- [Loss Composta (14 componentes)](#loss-composta-14-componentes)
 - [Continual Learning](#continual-learning)
 - [Geracao com Tomografia](#geracao-com-tomografia)
 - [Estrutura do Projeto](#estrutura-do-projeto)
@@ -33,7 +33,7 @@ Cada token produz uma **tomografia epistemica** completa no manifold Riemanniano
 O AletheionV2 e um LLM decoder-only onde o sistema epistemico nao e um
 pos-processamento externo, mas sim parte integrante da rede neural. Todos os
 11 sub-heads sao `nn.Module` treinaveis, com gradientes fluindo end-to-end
-atraves de 13 funcoes de perda com schedule de annealing.
+atraves de 14 funcoes de perda com schedule de annealing.
 
 Diferente de LLMs tradicionais que produzem apenas logits, cada token gera
 uma **tomografia epistemica** com 30+ campos: incerteza (Q1/Q2), confianca
@@ -343,13 +343,13 @@ config = AletheionV2Config.from_yaml("configs/scaling/350m_rtx4090.yaml")
 
 ---
 
-## Loss Composta (13 componentes)
+## Loss Composta (14 componentes)
 
 ```
 L = CE + anneal * (VARO + VI + MAD + metric_reg
                  + eidos + conflict + consciousness
                  + grounding + plasticity + frontier
-                 + mopsi + contrastive)
+                 + mopsi + contrastive + stp)
 ```
 
 | Componente | Objetivo |
@@ -367,6 +367,7 @@ L = CE + anneal * (VARO + VI + MAD + metric_reg
 | frontier | Maximiza exploracao de fronteira |
 | mopsi | Alinhamento psi-confianca |
 | contrastive | Anti-colapso contrastivo dual |
+| stp | Smooth Transition Penalty - suavidade de trajetoria no espaco latente |
 
 **Annealing schedule:**
 - Steps 0 - 10%: `anneal = 0` (somente CE)
@@ -495,7 +496,7 @@ aletheion-llm-v2/
 |   |-- causal_state/           # Tier 3 - Condicionamento causal
 |   |-- metacognitive/          # Tier 3 - Contrastive head
 |   |
-|   |-- loss/                   # 13 funcoes de perda
+|   |-- loss/                   # 14 funcoes de perda
 |   |   |-- composite_loss.py   # Agregador com annealing
 |   |   +-- *.py                # Uma loss por modulo
 |   |

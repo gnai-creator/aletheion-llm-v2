@@ -5,14 +5,14 @@
 \section{Loss Composta}
 \label{sec:loss}
 
-O \aletheion{} utiliza uma loss composta com 13 componentes, agrupadas em
-cross-entropy padr\~ao e 12 losses epist\^emicas com \textit{annealing}
+O \aletheion{} utiliza uma loss composta com 14 componentes, agrupadas em
+cross-entropy padr\~ao e 13 losses epist\^emicas com \textit{annealing}
 progressivo.
 
 \subsection{Formula\c{c}\~ao Geral}
 
 \begin{equation}
-    \calL_{\text{total}} = \lambda_{\text{CE}} \cdot \calL_{\text{CE}} + \alpha(t) \cdot \sum_{i=1}^{12} \lambda_i \cdot \calL_i
+    \calL_{\text{total}} = \lambda_{\text{CE}} \cdot \calL_{\text{CE}} + \alpha(t) \cdot \sum_{i=1}^{13} \lambda_i \cdot \calL_i
     \label{eq:total_loss}
 \end{equation}
 

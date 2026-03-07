@@ -1,5 +1,5 @@
 """
-Composite Loss: CE + VARO + VI + MAD + metric_reg + 8 losses adicionais.
+Composite Loss: CE + VARO + VI + MAD + metric_reg + 8 losses adicionais + STP.
 
 L_total = lambda_ce * CE
         + anneal * (lambda_varo * VARO
@@ -13,7 +13,8 @@ L_total = lambda_ce * CE
                   + lambda_plasticity * plasticity_reg
                   + lambda_frontier * frontier_reg
                   + lambda_mopsi * mopsi_reg
-                  + lambda_contrastive * contrastive_reg)
+                  + lambda_contrastive * contrastive_reg
+                  + lambda_stp * stp_reg)
 
 Annealing: primeiros warmup_fraction steps so CE,
 depois ramp linear ate ramp_fraction do treino total.
@@ -29,12 +30,13 @@ from aletheion_v2.core.output import EpistemicTomography
 from aletheion_v2.loss.varo_loss import VAROLoss
 from aletheion_v2.loss.vi_regularization import VIRegularization
 from aletheion_v2.loss.mad_calibration import MADCalibrationLoss
+from aletheion_v2.loss.stp_loss import stp_loss
 
 
 class AletheionV2Loss(nn.Module):
     """Loss composta do AletheionV2.
 
-    Combina 13 componentes com pesos configuraveis e annealing.
+    Combina 14 componentes com pesos configuraveis e annealing.
 
     Args:
         config: AletheionV2Config
@@ -69,6 +71,9 @@ class AletheionV2Loss(nn.Module):
         self.lambda_frontier = config.lambda_frontier
         self.lambda_mopsi = config.lambda_mopsi
         self.lambda_contrastive = config.lambda_contrastive
+        self.lambda_stp = config.lambda_stp
+        self.enable_stp = config.enable_stp
+        self.stp_num_triplets = config.stp_num_triplets
 
         # Annealing
         self.warmup_fraction = config.loss_warmup_fraction
@@ -281,6 +286,7 @@ class AletheionV2Loss(nn.Module):
         mask: Optional[torch.Tensor] = None,
         step: int = 0,
         total_steps: int = 1,
+        hidden_states: Optional[torch.Tensor] = None,
     ) -> Dict[str, torch.Tensor]:
         """Computa loss composta.
 
@@ -292,11 +298,12 @@ class AletheionV2Loss(nn.Module):
             mask: [B, T] mascara (1 = valido, 0 = padding)
             step: step atual (para annealing)
             total_steps: total de steps
+            hidden_states: [B, T, D] hidden states (para STP loss)
 
         Returns:
             Dict com 'total', 'ce', 'varo', 'vi', 'mad', 'metric',
             'eidos', 'conflict', 'consciousness', 'grounding',
-            'plasticity', 'frontier', 'mopsi', 'contrastive', 'annealing'
+            'plasticity', 'frontier', 'mopsi', 'contrastive', 'stp', 'annealing'
         """
         B, T, V = logits.shape
         losses = {}
@@ -314,9 +321,16 @@ class AletheionV2Loss(nn.Module):
         anneal = self._get_annealing_factor(step, total_steps)
         losses["annealing"] = torch.tensor(anneal)
 
-        # Se sem tomografia, retorna so CE
+        # STP loss (active from step 0, no annealing — it's a geometric
+        # regularizer on hidden states, not an epistemic loss)
+        stp = torch.tensor(0.0, device=ce.device)
+        if self.enable_stp and hidden_states is not None:
+            stp = stp_loss(hidden_states, num_triplets=self.stp_num_triplets)
+        losses["stp"] = stp
+
+        # Se sem tomografia, retorna CE + STP
         if tomography is None:
-            losses["total"] = self.lambda_ce * ce
+            losses["total"] = self.lambda_ce * ce + self.lambda_stp * stp
             for key in [
                 "varo", "vi", "mad", "metric",
                 "eidos", "conflict", "consciousness", "grounding",
@@ -371,6 +385,9 @@ class AletheionV2Loss(nn.Module):
         total = total + anneal * self.lambda_frontier * ext_losses["frontier"]
         total = total + anneal * self.lambda_mopsi * ext_losses["mopsi"]
         total = total + anneal * self.lambda_contrastive * ext_losses["contrastive"]
+
+        # STP (no annealing — active from step 0)
+        total = total + self.lambda_stp * stp
 
         losses["total"] = total
 

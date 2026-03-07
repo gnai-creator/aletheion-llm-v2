@@ -5,14 +5,14 @@
 \section{Composite Loss}
 \label{sec:loss}
 
-\aletheion{} uses a composite loss with 13 components, grouped into
-standard cross-entropy and 12 epistemic losses with progressive
+\aletheion{} uses a composite loss with 14 components, grouped into
+standard cross-entropy and 13 epistemic losses with progressive
 annealing.
 
 \subsection{General Formulation}
 
 \begin{equation}
-    \calL_{\text{total}} = \lambda_{\text{CE}} \cdot \calL_{\text{CE}} + \alpha(t) \cdot \sum_{i=1}^{12} \lambda_i \cdot \calL_i
+    \calL_{\text{total}} = \lambda_{\text{CE}} \cdot \calL_{\text{CE}} + \alpha(t) \cdot \sum_{i=1}^{13} \lambda_i \cdot \calL_i
     \label{eq:total_loss}
 \end{equation}
 

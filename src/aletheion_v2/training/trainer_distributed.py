@@ -122,6 +122,8 @@ class DistributedTrainer:
         self.global_step = 0
         self.tokens_seen = 0
         self.best_eval_loss = float("inf")
+        self.evals_without_improvement = 0
+        self.early_stopping_patience = config.early_stopping_patience
 
         # Logging
         self.wandb_run = None
@@ -236,6 +238,7 @@ class DistributedTrainer:
                 G=G,
                 step=self.global_step,
                 total_steps=self.total_steps,
+                hidden_states=output.hidden_states,
             )
 
             loss = losses["total"] / self.config.gradient_accumulation_steps
@@ -398,8 +401,24 @@ class DistributedTrainer:
                 eval_loss = self.evaluate()
                 if eval_loss < self.best_eval_loss:
                     self.best_eval_loss = eval_loss
+                    self.evals_without_improvement = 0
                     if self.is_main:
                         self.save_checkpoint("best.pt")
+                else:
+                    self.evals_without_improvement += 1
+
+                # Early stopping
+                if (
+                    self.early_stopping_patience > 0
+                    and self.evals_without_improvement >= self.early_stopping_patience
+                ):
+                    if self.is_main:
+                        print(
+                            f"[EARLY STOP] Nenhuma melhora por "
+                            f"{self.evals_without_improvement} avaliacoes. "
+                            f"Parando no step {self.global_step}."
+                        )
+                    break
 
             # Save
             if self._should_save():

@@ -128,6 +128,9 @@ class AletheionV2Config:
     lambda_frontier: float = 0.002
     lambda_mopsi: float = 0.003
     lambda_contrastive: float = 0.003
+    lambda_stp: float = 0.01  # Smooth Transition Penalty
+    enable_stp: bool = True  # STP loss (smooth hidden state transitions)
+    stp_num_triplets: int = 1  # Triplets amostrados por step
     loss_warmup_fraction: float = 0.1  # Fracao do treino so com CE
     loss_ramp_fraction: float = 0.5  # Ramp linear ate aqui
 
@@ -140,6 +143,7 @@ class AletheionV2Config:
     warmup_steps: int = 500
     log_interval: int = 50
     eval_interval: int = 500
+    early_stopping_patience: int = 0  # 0 = desabilitado; >0 = para apos N evals sem melhora
 
     # --- Tokenizer ---
     tokenizer_name: str = "gpt2"  # tiktoken encoding name

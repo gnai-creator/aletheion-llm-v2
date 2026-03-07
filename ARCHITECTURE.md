@@ -96,7 +96,7 @@ src/aletheion_v2/
 +-- metacognitive/               # Tier 3 - Meta-cognicao
 |   +-- contrastive_head.py      # ContrastiveHead (~200K params)
 |
-+-- loss/                        # 13 funcoes de perda
++-- loss/                        # 14 funcoes de perda
 |   +-- composite_loss.py        # Agregador principal com annealing
 |   +-- varo_loss.py             # Variancia condicional Q1*Q2
 |   +-- vi_regularization.py     # Regularizacao VI (phi minimo)
@@ -109,6 +109,7 @@ src/aletheion_v2/
 |   +-- frontier_loss.py         # Exploracao de fronteira
 |   +-- mopsi_loss.py            # Alinhamento psi-confianca
 |   +-- contrastive_loss.py      # Anti-colapso contrastivo
+|   +-- stp_loss.py              # Smooth Transition Penalty (suavidade latente)
 |
 +-- training/                    # Pipeline de treinamento
 |   +-- trainer.py               # Trainer single-GPU
@@ -189,7 +190,7 @@ contrastive = self.contrastive(hidden)         # divergence [B,T,1]
 
 ## Loss Composta
 
-13 componentes com annealing:
+14 componentes com annealing:
 
 ```
 L_total = lambda_ce * CE
@@ -206,6 +207,7 @@ L_total = lambda_ce * CE
           + lambda_frontier * frontier  # maximiza exploracao
           + lambda_mopsi * mopsi        # alinhamento psi
           + lambda_contrastive * contr  # anti-colapso
+          + lambda_stp * stp            # smooth transition penalty
         )
 ```
 
@@ -303,7 +305,7 @@ com amostras do buffer.
                       Prec   Checkpt   Scheduler
                            |
                     AletheionV2Loss
-                    (13 componentes)
+                    (14 componentes)
                            |
                     +------+------+
                     |             |
