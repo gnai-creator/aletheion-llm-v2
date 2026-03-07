@@ -189,18 +189,20 @@ def _enable_gradient_checkpointing(model: torch.nn.Module) -> None:
     em vez de guardar todas. Reduz ~60% de uso de memoria.
     """
     from aletheion_v2.core.transformer_block import TransformerBlock
+    import types
+
+    def _make_checkpointed_forward(orig_forward):
+        def checkpointed_forward(self, *args, **kwargs):
+            return torch.utils.checkpoint.checkpoint(
+                orig_forward, *args, use_reentrant=False, **kwargs
+            )
+        return checkpointed_forward
 
     for module in model.modules():
         if isinstance(module, TransformerBlock):
-            module._orig_forward = module.forward
-
-            def checkpointed_forward(self, *args, **kwargs):
-                return torch.utils.checkpoint.checkpoint(
-                    self._orig_forward, *args, use_reentrant=False, **kwargs
-                )
-
-            import types
-            module.forward = types.MethodType(checkpointed_forward, module)
+            module.forward = types.MethodType(
+                _make_checkpointed_forward(module.forward), module
+            )
 
 
 def get_mixed_precision_context(config: AletheionV2Config):

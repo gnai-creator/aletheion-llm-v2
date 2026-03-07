@@ -128,7 +128,10 @@ class AletheionV2Model(nn.Module):
         for block in self.blocks:
             x, attn_w = block(x, mask, return_weights=need_attn)
             if attn_w is not None:
-                all_attn_weights.append(attn_w)
+                # Detach: attention weights nao precisam de gradiente
+                # para o EpistemicHead (ele tem seus proprios parametros).
+                # Isso economiza ~3GB de VRAM no backward.
+                all_attn_weights.append(attn_w.detach())
 
         # Layer norm final
         hidden_states = self.ln_final(x)  # [B, T, d_model]
