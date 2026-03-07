@@ -16,12 +16,17 @@ The mapping from hidden states to 5D coordinates is performed by an
 MLP with sigmoid activation on the last layer:
 
 \begin{equation}
-    \bm{c} = \sigma\big(\bm{W}_3 \cdot \text{GELU}(\bm{W}_2 \cdot \text{GELU}(\bm{W}_1 \bh + \bm{b}_1) + \bm{b}_2) + \bm{b}_3\big) \in [0, 1]^5
+    \bm{c} = \sigma\big(\bm{W}_2 \cdot \text{GELU}(\bm{W}_1 \bh + \bm{b}_1) + \bm{b}_2\big) \in [0, 1]^5
     \label{eq:manifold_emb}
 \end{equation}
 
-with $\bm{W}_1 \in \R^{32 \times d}$, $\bm{W}_2 \in \R^{16 \times 32}$,
-$\bm{W}_3 \in \R^{5 \times 16}$, totaling {\raise.17ex\hbox{$\scriptstyle\sim$}}50K parameters.
+with $\bm{W}_1 \in \R^{h \times d}$, $\bm{W}_2 \in \R^{5 \times h}$,
+where $h = 5 \times 4 = 20$ (configurable via \texttt{hidden\_factor}),
+totaling {\raise.17ex\hbox{$\scriptstyle\sim$}}16K parameters for $d = 768$.
+
+The embedding also computes L2 distances to 6 fixed
+\textbf{anchor points} in the manifold (truth, ignorance, noise,
+complex, stale, ideal), refined via a small projection layer.
 
 The 5 dimensions capture distinct epistemic aspects:
 
@@ -130,8 +135,11 @@ To prevent geometric degeneration, we add a regularization on the
 condition number:
 
 \begin{equation}
-    \calL_{\text{metric}} = \big(\kappa(\bG) - 1\big)^2
+    \calL_{\text{metric}} = \log\big(\kappa(\bG) + 1\big)
 \end{equation}
 
 This forces $\bG$ to remain close to the identity, preventing certain
 manifold directions from collapsing or inflating excessively.
+The logarithmic form provides a softer penalty than $(\kappa - 1)^2$,
+allowing the metric to deviate slightly from isotropy while preventing
+extreme degeneration.

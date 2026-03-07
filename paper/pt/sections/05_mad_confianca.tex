@@ -20,8 +20,18 @@ dist\^ancia geod\'esica ao centroide do manifold:
 \end{equation}
 
 onde $d_{\bG}^2$ \'e a dist\^ancia geod\'esica ao quadrado (\Cref{eq:geodesic}),
-$\bm{\mu}$ \'e o centroide (fixo em $[0.5, 0.5, 0.5, 0.5, 0.5]$), e
-$\tau^2$ \'e o par\^ametro de escala.
+$\bm{\mu}$ \'e a \textbf{\^ancora de verdade} (fixa em
+$[0.1, 0.1, 0.5, 0.9, 0.9]$, representando baixa incerteza e alta
+qualidade de resposta), e $\tau^2$ \'e o par\^ametro de escala.
+
+O c\'omputo de dist\^ancia utiliza $\tau^2$ anisotr\'opico (por eixo)
+por padr\~ao:
+
+\begin{equation}
+    d_{\tau}^2(\bm{c}, \bm{\mu}) = \sum_{k=0}^{4} \frac{(c_k - \mu_k)^2}{\tau^2_k}
+\end{equation}
+
+onde cada eixo $k$ possui sua pr\'opria escala aprend\'ivel $\tau^2_k$.
 
 \subsection{$\tau^2$ Bayesiano}
 
@@ -32,15 +42,13 @@ garantir positividade:
     \tau^2 = \exp(\log \tau^2_{\text{param}})
 \end{equation}
 
-onde $\log \tau^2_{\text{param}}$ \'e um \texttt{nn.Parameter} aprendido.
-A inicializa\c{c}\~ao segue uma prior Inverse-Gamma:
+onde $\log \tau^2_{\text{param}}$ \'e um \texttt{nn.Parameter} aprendido,
+inicializado em $0.0$, de modo que $\tau^2 = \exp(0) = 1.0$ no in\'icio
+do treinamento. Esta inicializa\c{c}\~ao neutra permite que o modelo ajuste
+livremente a escala em ambas as dire\c{c}\~oes via \textit{backpropagation}.
 
-\begin{equation}
-    \tau^2 \sim \text{IG}(\alpha_0, \beta_0), \quad \alpha_0 = 2, \ \beta_0 = 1
-\end{equation}
-
-O modo da prior IG$(2, 1)$ \'e $\beta_0 / (\alpha_0 + 1) = 1/3$, fornecendo
-uma inicializa\c{c}\~ao conservadora que resulta em confian\c{c}a moderada.
+O par\^ametro \'e clamped durante o forward para garantir
+$\tau^2 \in [0.01, 10.0]$, evitando solu\c{c}\~oes degeneradas.
 
 \subsection{Calibra\c{c}\~ao via Loss}
 

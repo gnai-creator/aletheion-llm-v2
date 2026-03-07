@@ -210,9 +210,12 @@ $\bm{z} \in \R^4$:
     \bh' = \bh + g \cdot \text{MLP}_{4 \to 32 \to d}(\bm{z})
 \end{equation}
 
-onde $g = \sigma(\bm{w}^\top [\bh; \text{MLP}(\bm{z})])$ \'e um gate
-aprendido. O \texttt{PolicyBinding} mapeia estados para par\^ametros
-de gera\c{c}\~ao (temperatura, \textit{max\_tokens}).
+onde $g = \sigma(\bm{w}^\top \bm{z} + b) \in [0, 1]$ \'e um gate
+aprendido que depende apenas do vetor de estado $\bm{z}$ (n\~ao de
+$\bh$), garantindo que a intensidade do condicionamento seja
+determinada puramente pelo estado externo. O \texttt{PolicyBinding}
+mapeia estados para par\^ametros de gera\c{c}\~ao (temperatura,
+\textit{max\_tokens}) via regras heur\'isticas.
 
 \paragraph{Par\^ametros:} ~25.5K (StateConditioning) + 0 (PolicyBinding).
 

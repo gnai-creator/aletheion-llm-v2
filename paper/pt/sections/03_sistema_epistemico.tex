@@ -48,25 +48,31 @@ componentes ortogonais:
     treinamento.
 \end{itemize}
 
-Os gates $q_1$ e $q_2$ s\~ao implementados como MLPs compactos:
+Os gates $q_1$ e $q_2$ s\~ao implementados como MLPs compactos com
+profundidade configur\'avel (default 2 camadas, dimens\~ao oculta 64):
 
 \begin{equation}
-    \text{QGate}(\bh) = \sigma\big(\bm{W}_2 \cdot \text{GELU}(\bm{W}_1 \bh + \bm{b}_1) + \bm{b}_2\big)
+    \text{QGate}(\bh) = \sigma\big(\bm{W}_2 \cdot \text{ReLU}(\bm{W}_1 \bh + \bm{b}_1) + \bm{b}_2\big)
 \end{equation}
 
-com $\bm{W}_1 \in \R^{d/4 \times d}$ e $\bm{W}_2 \in \R^{1 \times d/4}$.
+com $\bm{W}_1 \in \R^{64 \times d}$ e $\bm{W}_2 \in \R^{1 \times 64}$.
 
 \subsection{Temperatura Adaptativa}
 
-A temperatura de amostragem \'e controlada adaptativamente pela incerteza:
+A temperatura de amostragem \'e controlada adaptativamente pelo sinal
+combinado de incerteza $c = \text{clamp}(q_1 \cdot q_2, \epsilon, 1)$:
 
 \begin{equation}
-    \tau = \tau_{\min} + (\tau_{\max} - \tau_{\min}) \cdot \sigma\big(\text{MLP}_\tau(q_1, q_2)\big)
+    \tau = \begin{cases}
+        \tau_{\text{base}} / c & \text{se } c < \tau_{\text{threshold}} \\
+        \tau_{\text{base}} & \text{caso contr\'ario}
+    \end{cases}
 \end{equation}
 
-onde $\tau_{\min} = 0.1$ e $\tau_{\max} = 2.0$. Tokens com alta incerteza
-recebem temperatura mais alta (distribui\c{c}\~ao mais uniforme), enquanto
-tokens confi\'aveis recebem temperatura baixa (distribui\c{c}\~ao mais afiada).
+onde $\tau_{\text{base}} = 1.0$ e $\tau_{\text{threshold}} = 0.5$.
+Quando ambas as incertezas s\~ao altas (produto excede o threshold),
+a temperatura sobe inversamente, criando distribui\c{c}\~oes mais uniformes.
+Caso contr\'ario, a temperatura base \'e mantida.
 
 \subsection{Organiza\c{c}\~ao em 3 Tiers}
 
@@ -81,9 +87,9 @@ complexidade crescente:
 \toprule
 \textbf{Tier} & \textbf{M\'odulo} & \textbf{Params} & \textbf{Sa\'ida} \\
 \midrule
-\multirow{5}{*}{\textbf{Core}} & Q1Gate & ~$d/2$ & $q_1$ [B,T,1] \\
-& Q2Gate & ~$d/2$ & $q_2$ [B,T,1] \\
-& DRM Manifold & ~50K & coords [B,T,5] \\
+\multirow{5}{*}{\textbf{Core}} & Q1Gate & ~49K & $q_1$ [B,T,1] \\
+& Q2Gate & ~49K & $q_2$ [B,T,1] \\
+& DRM Manifold & ~16K & coords [B,T,5] \\
 & MAD Confidence & ~2K & confidence [B,T,1] \\
 & VI (Intencionalidade) & ~5K & $\phi$, $\bm{v}$ \\
 \midrule

@@ -16,12 +16,17 @@ O mapeamento dos \textit{hidden states} para coordenadas 5D \'e feito por
 uma MLP com ativa\c{c}\~ao sigmoid na \'ultima camada:
 
 \begin{equation}
-    \bm{c} = \sigma\big(\bm{W}_3 \cdot \text{GELU}(\bm{W}_2 \cdot \text{GELU}(\bm{W}_1 \bh + \bm{b}_1) + \bm{b}_2) + \bm{b}_3\big) \in [0, 1]^5
+    \bm{c} = \sigma\big(\bm{W}_2 \cdot \text{GELU}(\bm{W}_1 \bh + \bm{b}_1) + \bm{b}_2\big) \in [0, 1]^5
     \label{eq:manifold_emb}
 \end{equation}
 
-com $\bm{W}_1 \in \R^{32 \times d}$, $\bm{W}_2 \in \R^{16 \times 32}$,
-$\bm{W}_3 \in \R^{5 \times 16}$, totalizando ~50K par\^ametros.
+com $\bm{W}_1 \in \R^{h \times d}$, $\bm{W}_2 \in \R^{5 \times h}$,
+onde $h = 5 \times 4 = 20$ (configur\'avel via \texttt{hidden\_factor}),
+totalizando {\raise.17ex\hbox{$\scriptstyle\sim$}}16K par\^ametros para $d = 768$.
+
+O embedding tamb\'em computa dist\^ancias L2 a 6 \textbf{pontos \^ancora}
+fixos no manifold (verdade, ignor\^ancia, ru\'ido, complexo, obsoleto,
+ideal), refinados via uma pequena camada de proje\c{c}\~ao.
 
 As 5 dimens\~oes capturam aspectos epist\^emicos distintos:
 
@@ -130,9 +135,11 @@ Para evitar degenera\c{c}\~ao da geometria, adicionamos uma regulariza\c{c}\~ao
 no \textit{condition number}:
 
 \begin{equation}
-    \calL_{\text{metric}} = \big(\kappa(\bG) - 1\big)^2
+    \calL_{\text{metric}} = \log\big(\kappa(\bG) + 1\big)
 \end{equation}
 
 Isso for\c{c}a $\bG$ a permanecer pr\'oximo da identidade, evitando que
 certas dire\c{c}\~oes do manifold colapsem ou se inflacionem
-excessivamente.
+excessivamente. A forma logar\'itmica fornece uma penalidade mais suave
+que $(\kappa - 1)^2$, permitindo pequenos desvios da isotropia enquanto
+previne degenera\c{c}\~ao extrema.

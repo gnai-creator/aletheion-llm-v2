@@ -11,8 +11,8 @@ interventions.
 
 \subsection{Problem Formulation}
 
-The MPC navigator operates on the manifold state
-$\bm{s}_t = (\bm{c}_t, \kappa_t, \phi_t)$ and seeks the action sequence
+The MPC navigator operates on the $\phi$ state
+$\bm{s}_t = (\phi_1, \phi_2, \phi_3, \phi_4) \in \R^4$ and seeks the action sequence
 $\bm{a}_{t:t+D}$ that minimizes a cumulative cost:
 
 \begin{equation}
@@ -35,14 +35,14 @@ The navigator has 12 intervention actions:
 \toprule
 \textbf{ID} & \textbf{Action} & \textbf{Cost} & \textbf{Effect} \\
 \midrule
-0 & NOOP & 0.00 & None \\
-1--5 & INJECT\_DIM\_$k$ & 0.04--0.08 & Reinforce dimension $k$ \\
-6 & BOOST\_CONFIDENCE & 0.03 & Increase $\kappa$ \\
-7 & REDUCE\_CONFIDENCE & 0.05 & Decrease $\kappa$ \\
-8 & INCREASE\_DISPERSION & 0.06 & Increase dispersion \\
-9 & DECREASE\_DISPERSION & 0.06 & Decrease dispersion \\
-10 & BOOST\_ENTROPY & 0.07 & Diversify field \\
-11 & FULL\_RESET & 0.15--0.25 & Reset to centroid \\
+0 & NOOP & 0.00 & Natural drift ($\times 0.995$) \\
+1--5 & INJECT\_AXIS\_$k$ & 0.04 & Reinforce axis $k$ ($\phi_1$+0.05, $\phi_3$+0.03) \\
+6 & INJECT\_WEAKEST & 0.06 & Reinforce weakest axis ($\phi_1$+0.07) \\
+7 & INJECT\_TWO & 0.08 & Reinforce two weakest axes ($\phi_1$+0.10) \\
+8 & CONF\_LIGHT & 0.03 & Light $\phi_4$ correction (5\%) \\
+9 & CONF\_MEDIUM & 0.06 & Medium $\phi_4$ correction (10\%) \\
+10 & CONF\_STRONG & 0.10 & Strong $\phi_4$ correction (20\%) \\
+11 & RESET\_25 & 0.15 & 25\% reset toward mean \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -55,29 +55,35 @@ The transition model predicts the next state given an action:
     \hat{\bm{s}}_{t+1} = f_\theta(\bm{s}_t, a_t)
 \end{equation}
 
-implemented as a compact MLP:
+implemented as a residual MLP that combines an analytical transition
+with a learned correction:
 
 \begin{equation}
-    f_\theta(\bm{s}, a) = \bm{W}_2 \cdot \text{ReLU}\big(\bm{W}_1 [\bm{s}; \text{onehot}(a)] + \bm{b}_1\big) + \bm{b}_2
+    f_\theta(\bm{s}, a) = f_{\text{anal}}(\bm{s}, a) + \eta \cdot \text{MLP}_{16 \to 32 \to 32 \to 4}([\bm{s}; \text{onehot}(a)])
 \end{equation}
 
-with input $\text{dim}(\bm{s}) + 12$ and output $\text{dim}(\bm{s})$.
+where $f_{\text{anal}}$ applies deterministic effects
+(\Cref{tab:mpc_actions}) and $\eta$ is a learnable residual scale
+(initialized at 0.1). The MLP uses GELU activation with Tanh output,
+taking $4 + 12 = 16$ input dimensions.
 
 \subsection{Cost Function}
 
 The cost at each step combines 4 terms:
 
+The scoring depends on the operating mode:
+
 \begin{equation}
-    C(\bm{s}, a) = \underbrace{w_\phi (1 - \phi)}_{\text{health}} +
-    \underbrace{w_\kappa |\kappa - \kappa^*|}_{\text{calibration}} +
-    \underbrace{w_a \cdot c(a)}_{\text{action cost}} +
-    \underbrace{w_s \cdot \|\Delta a\|}_{\text{smoothness}}
+    \text{score} = \begin{cases}
+        \phi_{\text{final}} - 0.20 \cdot C_{\text{total}} - 0.02 \cdot n_{\text{changes}} & \text{(RECOVERY)} \\
+        0.5 \cdot \max(0, \phi_{\text{final}} - 0.45) - C_{\text{total}} - 0.02 \cdot n_{\text{changes}} & \text{(MAINTENANCE)}
+    \end{cases}
     \label{eq:mpc_cost}
 \end{equation}
 
-where $\kappa^*$ is the target confidence, $c(a)$ the intrinsic action
-cost (\Cref{tab:mpc_actions}), and $\|\Delta a\|$ penalizes abrupt
-action changes (stability).
+where $C_{\text{total}} = \sum_k c(a_k)$ is the cumulative action cost
+(\Cref{tab:mpc_actions}) and $n_{\text{changes}}$ counts action transitions
+(smoothness penalty).
 
 \subsection{Beam Search}
 

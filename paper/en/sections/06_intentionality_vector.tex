@@ -22,71 +22,89 @@ composed of 4 indicators:
 
 with $\sum w_i = 1$. The 4 components are:
 
-\paragraph{$\phi_1$: Effective Dimensionality.}
-Measures how many of the 5 dimensions are active:
+\paragraph{$\phi_1$: Dimensional Diversity.}
+Measures spread across the 5 dimensions via per-axis standard deviation:
 
 \begin{equation}
-    \phi_1 = \frac{1}{5} \sum_{k=0}^{4} \mathbb{1}\big[\text{std}(c_k) > \epsilon_{\text{dim}}\big]
+    \phi_1 = \text{clamp}\left(\frac{\overline{\text{std}(c_k)}}{0.29}, 0, 1\right)
 \end{equation}
 
-Low values indicate \textbf{dimensional collapse} --- the model projects
-tokens into a lower-dimensional subspace, losing epistemic capacity.
+where $\overline{\text{std}(c_k)}$ is the mean of per-axis standard
+deviations across the batch. The normalizer $0.29$ corresponds to the
+std of a uniform $[0,1]$ distribution. Low values indicate
+\textbf{dimensional collapse}.
 
 \paragraph{$\phi_2$: Dispersion.}
-Measures position diversity on the manifold:
+Measures distance diversity from the batch centroid:
 
 \begin{equation}
-    \phi_2 = \frac{1}{5} \sum_{k=0}^{4} \text{std}(c_k)
+    \phi_2 = \text{clamp}\left(\frac{\|\bm{c} - \bar{\bm{c}}\|_2}{\sqrt{5}}, 0, 1\right)
 \end{equation}
 
-\paragraph{$\phi_3$: Directional Field Entropy.}
-High entropy indicates diversified exploration; low entropy indicates
-stagnation:
+where $\bar{\bm{c}}$ is the centroid and $\sqrt{5}$ is the maximum
+L2 distance in $[0,1]^5$.
+
+\paragraph{$\phi_3$: Entropy.}
+Measures distributional uniformity of coordinates across axes:
 
 \begin{equation}
-    \phi_3 = \frac{H(\bm{F})}{\log K}
+    p_k = \frac{\bar{c}_k}{\sum_j \bar{c}_j + \epsilon}, \quad
+    \phi_3 = \text{clamp}\left(\frac{-\sum_k p_k \log p_k}{\log 5}, 0, 1\right)
 \end{equation}
-
-where $K$ is the number of discretization bins.
 
 \paragraph{$\phi_4$: Confidence Distribution.}
 Uses a U-shaped profile with ideal standard deviation $\sigma^* = 0.15$:
 
 \begin{equation}
-    \phi_4 = 1 - \left|\text{std}(\kappa) - \sigma^*\right| / \sigma^*
+    \phi_4 = \text{clamp}\left(1 - \frac{|\text{std}(\kappa) - \sigma^*|}{0.5}, 0, 1\right)
 \end{equation}
 
 This penalizes both uniformly high confidence (excess) and uniformly
-low confidence (collapse).
+low confidence (collapse). The normalizer $0.5$ provides a wider
+tolerance range than $\sigma^*$.
 
 \subsection{Severity and Activation}
 
-Intervention severity follows a square root curve for aggressive
-response in critical cases:
+Severity is computed as a 70/30 blend of analytical and learned
+pathways:
 
 \begin{equation}
-    s = \begin{cases}
-        0 & \text{if } \phi \geq \phi_{\text{critical}} \\
-        \sqrt{\frac{\phi_{\text{critical}} - \phi}{\phi_{\text{critical}}}} & \text{otherwise}
-    \end{cases}
+    s_{\text{anal}} = \sqrt{\max\left(0, 1 - \frac{\phi}{\phi_{\text{critical}}}\right)}
+    \label{eq:vi_severity_anal}
+\end{equation}
+
+\begin{equation}
+    s_{\text{learn}} = \sigma\big(\text{MLP}_{4 \to 8 \to 1}(\phi_1, \phi_2, \phi_3, \phi_4)\big)
+\end{equation}
+
+\begin{equation}
+    s = 0.7 \cdot s_{\text{anal}} + 0.3 \cdot s_{\text{learn}}
     \label{eq:vi_severity}
 \end{equation}
 
-with $\phi_{\text{critical}} = 0.5$ by default.
+with $\phi_{\text{critical}} = 0.5$ by default. The analytical pathway
+provides a deterministic baseline via the square root curve, while
+the learned pathway allows the model to adapt severity to specific
+component patterns.
 
 \subsection{Manifold Correction}
 
-When $s > 0$, the VI injects a deterministic correction into the
-manifold coordinates:
+When $s > 0$, the VI computes a correction direction via a learned
+MLP:
 
 \begin{equation}
-    \bm{v} = s \cdot \alpha \cdot (\bm{c}_{\text{ideal}} - \bm{c})
+    \bm{d}_{\text{raw}} = \tanh\big(\text{MLP}_{9 \to 10 \to 5}([\phi_1, \phi_2, \phi_3, \phi_4, \bm{c}])\big)
+\end{equation}
+
+\begin{equation}
+    \bm{v} = \frac{\bm{d}_{\text{raw}}}{\|\bm{d}_{\text{raw}}\| + \epsilon} \cdot s \cdot \alpha
     \label{eq:vi_correction}
 \end{equation}
 
-where $\alpha = 0.6$ is the injection strength and
-$\bm{c}_{\text{ideal}}$ is determined by the direction of greatest
-degradation.
+where $\alpha = 0.6$ is the injection strength. The direction network
+takes the 4 $\phi$ components and the current 5D coordinates as input
+(9 dimensions total), allowing context-dependent correction rather
+than a fixed target.
 
 \subsection{Confidence Penalty}
 
@@ -103,14 +121,18 @@ confidence when the manifold is in a state of collapse.
 
 \subsection{VI Regularization}
 
-The VI regularization loss encourages minimum health:
+The VI regularization loss encourages minimum health and penalizes
+excessive severity:
 
 \begin{equation}
-    \calL_{\text{VI}} = \E\big[\text{ReLU}(\phi_{\min} - \phi)^2\big]
+    \calL_{\text{VI}} = \E\big[\text{ReLU}(\phi_{\text{critical}} - \phi)^2\big]
+    + 0.3 \cdot \E[s^2]
 \end{equation}
 
-with $\phi_{\min} = 0.3$. This ensures the manifold does not fully
-degenerate during training.
+with $\phi_{\text{critical}} = 0.5$. The first term ensures the manifold
+does not degenerate during training. The second term penalizes high
+severity, encouraging the model to maintain health proactively rather
+than relying on corrections.
 
 \subsection{Empirical Result: Collapse Prevention}
 

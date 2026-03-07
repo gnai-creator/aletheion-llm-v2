@@ -223,6 +223,7 @@ def run_training(data_dir: str = "") -> bool:
         sys.executable, str(ROOT / "scripts" / "train_distributed.py"),
         "--config", str(CONFIG_PATH),
         "--data-dir", use_data,
+        "--resume", "auto",
     ]
 
     result = subprocess.run(cmd)

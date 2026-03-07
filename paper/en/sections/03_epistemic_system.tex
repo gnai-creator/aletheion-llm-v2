@@ -49,25 +49,31 @@ orthogonal components:
     with more training.
 \end{itemize}
 
-The $q_1$ and $q_2$ gates are implemented as compact MLPs:
+The $q_1$ and $q_2$ gates are implemented as compact MLPs with
+configurable depth (default 2 layers, hidden dimension 64):
 
 \begin{equation}
-    \text{QGate}(\bh) = \sigma\big(\bm{W}_2 \cdot \text{GELU}(\bm{W}_1 \bh + \bm{b}_1) + \bm{b}_2\big)
+    \text{QGate}(\bh) = \sigma\big(\bm{W}_2 \cdot \text{ReLU}(\bm{W}_1 \bh + \bm{b}_1) + \bm{b}_2\big)
 \end{equation}
 
-with $\bm{W}_1 \in \R^{d/4 \times d}$ and $\bm{W}_2 \in \R^{1 \times d/4}$.
+with $\bm{W}_1 \in \R^{64 \times d}$ and $\bm{W}_2 \in \R^{1 \times 64}$.
 
 \subsection{Adaptive Temperature}
 
-The sampling temperature is adaptively controlled by uncertainty:
+The sampling temperature is adaptively controlled by the combined
+uncertainty signal $c = \text{clamp}(q_1 \cdot q_2, \epsilon, 1)$:
 
 \begin{equation}
-    \tau = \tau_{\min} + (\tau_{\max} - \tau_{\min}) \cdot \sigma\big(\text{MLP}_\tau(q_1, q_2)\big)
+    \tau = \begin{cases}
+        \tau_{\text{base}} / c & \text{if } c < \tau_{\text{threshold}} \\
+        \tau_{\text{base}} & \text{otherwise}
+    \end{cases}
 \end{equation}
 
-where $\tau_{\min} = 0.1$ and $\tau_{\max} = 2.0$. Tokens with high
-uncertainty receive higher temperature (more uniform distribution),
-while confident tokens receive low temperature (sharper distribution).
+where $\tau_{\text{base}} = 1.0$ and $\tau_{\text{threshold}} = 0.5$.
+When both uncertainties are high (product exceeds threshold), temperature
+rises inversely, creating more uniform distributions. Otherwise, the
+base temperature is maintained.
 
 \subsection{3-Tier Organization}
 
@@ -82,9 +88,9 @@ increasing complexity:
 \toprule
 \textbf{Tier} & \textbf{Module} & \textbf{Params} & \textbf{Output} \\
 \midrule
-\multirow{5}{*}{\textbf{Core}} & Q1Gate & ~$d/2$ & $q_1$ [B,T,1] \\
-& Q2Gate & ~$d/2$ & $q_2$ [B,T,1] \\
-& DRM Manifold & ~50K & coords [B,T,5] \\
+\multirow{5}{*}{\textbf{Core}} & Q1Gate & ~49K & $q_1$ [B,T,1] \\
+& Q2Gate & ~49K & $q_2$ [B,T,1] \\
+& DRM Manifold & ~16K & coords [B,T,5] \\
 & MAD Confidence & ~2K & confidence [B,T,1] \\
 & VI (Intentionality) & ~5K & $\phi$, $\bm{v}$ \\
 \midrule

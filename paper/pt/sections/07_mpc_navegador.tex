@@ -11,7 +11,8 @@ sequ\^encias \'otimas de interven\c{c}\~oes.
 
 \subsection{Formula\c{c}\~ao do Problema}
 
-O navegador MPC opera sobre o estado do manifold $\bm{s}_t = (\bm{c}_t, \kappa_t, \phi_t)$
+O navegador MPC opera sobre o estado $\phi$
+$\bm{s}_t = (\phi_1, \phi_2, \phi_3, \phi_4) \in \R^4$
 e busca a sequ\^encia de a\c{c}\~oes $\bm{a}_{t:t+D}$ que minimiza um custo
 acumulado:
 
@@ -35,14 +36,14 @@ O navegador disp\~oe de 12 a\c{c}\~oes de interven\c{c}\~ao:
 \toprule
 \textbf{ID} & \textbf{A\c{c}\~ao} & \textbf{Custo} & \textbf{Efeito} \\
 \midrule
-0 & NOOP & 0.00 & Nenhum \\
-1--5 & INJECT\_DIM\_$k$ & 0.04--0.08 & Refor\c{c}a dimens\~ao $k$ \\
-6 & BOOST\_CONFIDENCE & 0.03 & Aumenta $\kappa$ \\
-7 & REDUCE\_CONFIDENCE & 0.05 & Reduz $\kappa$ \\
-8 & INCREASE\_DISPERSION & 0.06 & Aumenta dispers\~ao \\
-9 & DECREASE\_DISPERSION & 0.06 & Reduz dispers\~ao \\
-10 & BOOST\_ENTROPY & 0.07 & Diversifica campo \\
-11 & FULL\_RESET & 0.15--0.25 & Reset ao centroide \\
+0 & NOOP & 0.00 & Drift natural ($\times 0.995$) \\
+1--5 & INJECT\_AXIS\_$k$ & 0.04 & Refor\c{c}a eixo $k$ ($\phi_1$+0.05, $\phi_3$+0.03) \\
+6 & INJECT\_WEAKEST & 0.06 & Refor\c{c}a eixo mais fraco ($\phi_1$+0.07) \\
+7 & INJECT\_TWO & 0.08 & Refor\c{c}a dois eixos mais fracos ($\phi_1$+0.10) \\
+8 & CONF\_LIGHT & 0.03 & Corre\c{c}\~ao leve $\phi_4$ (5\%) \\
+9 & CONF\_MEDIUM & 0.06 & Corre\c{c}\~ao m\'edia $\phi_4$ (10\%) \\
+10 & CONF\_STRONG & 0.10 & Corre\c{c}\~ao forte $\phi_4$ (20\%) \\
+11 & RESET\_25 & 0.15 & Reset 25\% em dire\c{c}\~ao \`a m\'edia \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -55,29 +56,35 @@ O modelo de transi\c{c}\~ao prediz o pr\'oximo estado dado a a\c{c}\~ao:
     \hat{\bm{s}}_{t+1} = f_\theta(\bm{s}_t, a_t)
 \end{equation}
 
-implementado como uma MLP compacta:
+implementado como uma MLP residual que combina uma transi\c{c}\~ao
+anal\'itica com uma corre\c{c}\~ao aprendida:
 
 \begin{equation}
-    f_\theta(\bm{s}, a) = \bm{W}_2 \cdot \text{ReLU}\big(\bm{W}_1 [\bm{s}; \text{onehot}(a)] + \bm{b}_1\big) + \bm{b}_2
+    f_\theta(\bm{s}, a) = f_{\text{anal}}(\bm{s}, a) + \eta \cdot \text{MLP}_{16 \to 32 \to 32 \to 4}([\bm{s}; \text{onehot}(a)])
 \end{equation}
 
-com input $\text{dim}(\bm{s}) + 12$ e output $\text{dim}(\bm{s})$.
+onde $f_{\text{anal}}$ aplica efeitos determin\'isticos
+(\Cref{tab:mpc_actions}) e $\eta$ \'e uma escala residual aprend\'ivel
+(inicializada em 0.1). A MLP usa ativa\c{c}\~ao GELU com sa\'ida Tanh,
+recebendo $4 + 12 = 16$ dimens\~oes de entrada.
 
 \subsection{Fun\c{c}\~ao de Custo}
 
 O custo em cada step combina 4 termos:
 
+A pontua\c{c}\~ao depende do modo de opera\c{c}\~ao:
+
 \begin{equation}
-    C(\bm{s}, a) = \underbrace{w_\phi (1 - \phi)}_{\text{sa\'ude}} +
-    \underbrace{w_\kappa |\kappa - \kappa^*|}_{\text{calibra\c{c}\~ao}} +
-    \underbrace{w_a \cdot c(a)}_{\text{custo da a\c{c}\~ao}} +
-    \underbrace{w_s \cdot \|\Delta a\|}_{\text{suavidade}}
+    \text{score} = \begin{cases}
+        \phi_{\text{final}} - 0.20 \cdot C_{\text{total}} - 0.02 \cdot n_{\text{changes}} & \text{(RECOVERY)} \\
+        0.5 \cdot \max(0, \phi_{\text{final}} - 0.45) - C_{\text{total}} - 0.02 \cdot n_{\text{changes}} & \text{(MAINTENANCE)}
+    \end{cases}
     \label{eq:mpc_cost}
 \end{equation}
 
-onde $\kappa^*$ \'e a confian\c{c}a alvo, $c(a)$ o custo intr\'inseco da
-a\c{c}\~ao (\Cref{tab:mpc_actions}), e $\|\Delta a\|$ penaliza mudan\c{c}as
-bruscas de a\c{c}\~ao (estabilidade).
+onde $C_{\text{total}} = \sum_k c(a_k)$ \'e o custo acumulado das a\c{c}\~oes
+(\Cref{tab:mpc_actions}) e $n_{\text{changes}}$ conta as transi\c{c}\~oes
+de a\c{c}\~ao (penalidade de suavidade).
 
 \subsection{Beam Search}
 

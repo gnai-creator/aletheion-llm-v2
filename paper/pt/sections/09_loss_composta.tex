@@ -40,9 +40,9 @@ $\calS$ exclui tokens de padding.
 \toprule
 \textbf{\#} & \textbf{Nome} & \textbf{$\lambda$} & \textbf{Objetivo} \\
 \midrule
-1 & VARO & 0.01 & Regulariza vari\^ancia condicional $q_1 \cdot q_2$ \\
-2 & VI & 0.01 & Mant\'em $\phi \geq \phi_{\min}$ \\
-3 & MAD Calibra\c{c}\~ao & 0.01 & Calibra confian\c{c}a vs acur\'acia \\
+1 & VARO & 0.10 & Calibra $q_1 \cdot q_2$ vs acur\'acia \\
+2 & VI & 0.01 & Mant\'em $\phi \geq \phi_{\text{cr\'itico}}$ + penalidade severidade \\
+3 & MAD Calibra\c{c}\~ao & 0.05 & Calibra confian\c{c}a vs acur\'acia \\
 4 & M\'etrica & 0.001 & $\kappa(\bG) \to 1$ (condition number) \\
 5 & Eidos & 0.005 & Balanceamento de eixos \\
 6 & Conflito & 0.005 & Minimiza $\gamma^2$ \\
@@ -58,21 +58,22 @@ $\calS$ exclui tokens de padding.
 
 \subsection{Detalhamento das Losses}
 
-\paragraph{VARO (Vari\^ancia Condicional).}
-Regulariza a intera\c{c}\~ao entre as duas incertezas:
+\paragraph{VARO (Calibra\c{c}\~ao).}
+Calibra o sinal combinado de incerteza contra a acur\'acia real:
 
 \begin{equation}
-    \calL_{\text{VARO}} = \E\big[(q_1 \cdot q_2 - \bar{q}_1 \cdot \bar{q}_2)^2\big]
+    \calL_{\text{VARO}} = \E\big[(q_1 \cdot q_2 - p_{\text{correto}})^2\big]
 \end{equation}
 
-Isso for\c{c}a $q_1$ e $q_2$ a capturarem informa\c{c}\~oes complementares,
-evitando redund\^ancia.
+onde $p_{\text{correto}} = P(x_t = x_t^* \mid x_{<t})$ \'e a probabilidade
+softmax do token correto. Isso for\c{c}a o produto $q_1 \cdot q_2$ a estimar
+a confian\c{c}a real do modelo em cada predi\c{c}\~ao.
 
 \paragraph{Regulariza\c{c}\~ao VI.}
-Penaliza manifold degradado:
+Penaliza manifold degradado e severidade excessiva (\Cref{sec:vi}):
 
 \begin{equation}
-    \calL_{\text{VI}} = \E\big[\text{ReLU}(\phi_{\min} - \phi)^2\big], \quad \phi_{\min} = 0.3
+    \calL_{\text{VI}} = \E\big[\text{ReLU}(\phi_{\text{cr\'itico}} - \phi)^2\big] + 0.3 \cdot \E[s^2], \quad \phi_{\text{cr\'itico}} = 0.5
 \end{equation}
 
 \paragraph{MAD Calibra\c{c}\~ao.}
@@ -80,7 +81,7 @@ BCE entre confian\c{c}a e acur\'acia (\Cref{eq:mad_loss}).
 
 \paragraph{Regulariza\c{c}\~ao M\'etrica.}
 \begin{equation}
-    \calL_{\text{metric}} = (\kappa(\bG) - 1)^2
+    \calL_{\text{metric}} = \log(\kappa(\bG) + 1)
 \end{equation}
 
 \paragraph{Eidos.}

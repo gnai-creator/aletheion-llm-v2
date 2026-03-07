@@ -35,6 +35,37 @@ from aletheion_v2.training.data_pipeline import create_dataloader_from_config
 from aletheion_v2.training.distributed import setup_distributed
 
 
+def _find_latest_checkpoint(save_dir: str) -> str:
+    """Encontra o checkpoint mais recente no diretorio de save.
+
+    Procura arquivos step_*.pt e retorna o de maior step number.
+
+    Args:
+        save_dir: Diretorio de checkpoints
+
+    Returns:
+        Caminho do checkpoint mais recente, ou "" se nenhum encontrado
+    """
+    save_path = Path(save_dir)
+    if not save_path.exists():
+        return ""
+
+    checkpoints = list(save_path.glob("step_*.pt"))
+    if not checkpoints:
+        return ""
+
+    # Ordena por step number extraido do nome
+    def _step_num(p):
+        try:
+            return int(p.stem.split("_")[1])
+        except (IndexError, ValueError):
+            return -1
+
+    checkpoints.sort(key=_step_num)
+    latest = checkpoints[-1]
+    return str(latest)
+
+
 def _detect_vocab_size(data_dir: str) -> int:
     """Detecta vocab_size do metadata dos dados.
 
@@ -58,7 +89,7 @@ def _detect_vocab_size(data_dir: str) -> int:
 def main():
     parser = argparse.ArgumentParser(description="Treinamento AletheionV2")
     parser.add_argument("--config", required=True, help="Caminho do YAML de config")
-    parser.add_argument("--resume", default="", help="Checkpoint para resume")
+    parser.add_argument("--resume", default="", help="Checkpoint para resume ('auto' detecta o mais recente)")
     parser.add_argument("--data-dir", default="", help="Override do diretorio de dados")
     parser.add_argument("--eval-data-dir", default="", help="Dados de avaliacao")
     parser.add_argument("--override", nargs="*", help="Overrides: key=value")
@@ -143,9 +174,19 @@ def main():
         eval_loader=eval_loader,
     )
 
-    # Resume
-    if args.resume:
-        trainer.load_checkpoint(args.resume)
+    # Resume (auto-detecta ultimo checkpoint se --resume auto)
+    resume_path = args.resume
+    if resume_path.lower() == "auto":
+        resume_path = _find_latest_checkpoint(config.save_dir)
+        if resume_path and is_main:
+            print(f"[RESUME] Auto-detectado: {resume_path}")
+        elif is_main:
+            print("[RESUME] Nenhum checkpoint encontrado, iniciando do zero.")
+
+    if resume_path:
+        trainer.load_checkpoint(resume_path)
+        if is_main:
+            print(f"[RESUME] Continuando do step {trainer.global_step}")
 
     # Treina
     history = trainer.train()

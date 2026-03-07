@@ -30,10 +30,12 @@ The forward pass follows 4 stages:
 \subsubsection{Stage 1: Embeddings}
 
 \begin{equation}
-    \bh^{(0)} = \text{TokenEmb}(\bx) \in \R^{B \times T \times d}
+    \bh^{(0)} = \text{TokenEmb}(\bx) \cdot \sqrt{d} \in \R^{B \times T \times d}
 \end{equation}
 
-where $d = d_{\text{model}}$ is the model dimension. \aletheion{} uses
+where $d = d_{\text{model}}$ is the model dimension. The embedding output
+is scaled by $\sqrt{d}$ following standard transformer practice.
+\aletheion{} uses
 \textbf{RoPE} (Rotary Position Embedding) \cite{su2021roformer}
 applied inside the attention, instead of additive positional embeddings:
 
@@ -61,15 +63,15 @@ Causal attention ensures autoregression:
 
 where $\bm{M}_{ij} = -\infty$ if $j > i$ (lower triangular causal mask).
 
-\paragraph{FeedForward with SwiGLU.}
-The feedforward layer uses SwiGLU activation \cite{shazeer2020glu}:
+\paragraph{FeedForward with GELU.}
+The feedforward layer uses GELU activation \cite{hendrycks2016gelu}:
 
 \begin{equation}
-    \text{FFN}(\bx) = (\text{Swish}(\bx \bm{W}_{\text{gate}}) \odot \bx \bm{W}_{\text{up}}) \bm{W}_{\text{down}}
+    \text{FFN}(\bx) = \bm{W}_2 \cdot \text{GELU}(\bm{W}_1 \bx)
 \end{equation}
 
-where $\bm{W}_{\text{gate}}, \bm{W}_{\text{up}} \in \R^{d \times d_{\text{ff}}}$ and
-$\bm{W}_{\text{down}} \in \R^{d_{\text{ff}} \times d}$.
+where $\bm{W}_1 \in \R^{d \times d_{\text{ff}}}$ and
+$\bm{W}_2 \in \R^{d_{\text{ff}} \times d}$, with $d_{\text{ff}} = 4d$.
 
 \subsubsection{Stage 3: Output Projection}
 

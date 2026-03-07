@@ -20,8 +20,17 @@ distance to the manifold centroid:
 \end{equation}
 
 where $d_{\bG}^2$ is the squared geodesic distance (\Cref{eq:geodesic}),
-$\bm{\mu}$ is the centroid (fixed at $[0.5, 0.5, 0.5, 0.5, 0.5]$), and
-$\tau^2$ is the scale parameter.
+$\bm{\mu}$ is the \textbf{truth anchor} (fixed at
+$[0.1, 0.1, 0.5, 0.9, 0.9]$, representing low uncertainty and high
+response quality), and $\tau^2$ is the scale parameter.
+
+The distance computation uses anisotropic (per-axis) $\tau^2$ by default:
+
+\begin{equation}
+    d_{\tau}^2(\bm{c}, \bm{\mu}) = \sum_{k=0}^{4} \frac{(c_k - \mu_k)^2}{\tau^2_k}
+\end{equation}
+
+where each axis $k$ has its own learnable scale $\tau^2_k$.
 
 \subsection{Bayesian $\tau^2$}
 
@@ -31,15 +40,13 @@ The $\tau^2$ parameter is parametrized in log-scale to ensure positivity:
     \tau^2 = \exp(\log \tau^2_{\text{param}})
 \end{equation}
 
-where $\log \tau^2_{\text{param}}$ is a learned \texttt{nn.Parameter}.
-The initialization follows an Inverse-Gamma prior:
+where $\log \tau^2_{\text{param}}$ is a learned \texttt{nn.Parameter}
+initialized at $0.0$, so $\tau^2 = \exp(0) = 1.0$ at the start of
+training. This neutral initialization allows the model to freely
+adjust the scale in either direction via backpropagation.
 
-\begin{equation}
-    \tau^2 \sim \text{IG}(\alpha_0, \beta_0), \quad \alpha_0 = 2, \ \beta_0 = 1
-\end{equation}
-
-The mode of the IG$(2, 1)$ prior is $\beta_0 / (\alpha_0 + 1) = 1/3$,
-providing a conservative initialization that yields moderate confidence.
+The parameter is clamped during forward to ensure
+$\tau^2 \in [0.01, 10.0]$, preventing degenerate solutions.
 
 \subsection{Calibration via Loss}
 

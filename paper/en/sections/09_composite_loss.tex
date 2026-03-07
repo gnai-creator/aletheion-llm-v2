@@ -41,9 +41,9 @@ $\calS$ excludes padding tokens.
 \toprule
 \textbf{\#} & \textbf{Name} & \textbf{$\lambda$} & \textbf{Objective} \\
 \midrule
-1 & VARO & 0.01 & Regularize conditional variance $q_1 \cdot q_2$ \\
-2 & VI & 0.01 & Maintain $\phi \geq \phi_{\min}$ \\
-3 & MAD Calibration & 0.01 & Calibrate confidence vs accuracy \\
+1 & VARO & 0.10 & Calibrate $q_1 \cdot q_2$ vs accuracy \\
+2 & VI & 0.01 & Maintain $\phi \geq \phi_{\text{critical}}$ + severity penalty \\
+3 & MAD Calibration & 0.05 & Calibrate confidence vs accuracy \\
 4 & Metric & 0.001 & $\kappa(\bG) \to 1$ (condition number) \\
 5 & Eidos & 0.005 & Axis balancing \\
 6 & Conflict & 0.005 & Minimize $\gamma^2$ \\
@@ -59,21 +59,22 @@ $\calS$ excludes padding tokens.
 
 \subsection{Loss Details}
 
-\paragraph{VARO (Conditional Variance).}
-Regularizes the interaction between both uncertainties:
+\paragraph{VARO (Calibration).}
+Calibrates the combined uncertainty signal against actual correctness:
 
 \begin{equation}
-    \calL_{\text{VARO}} = \E\big[(q_1 \cdot q_2 - \bar{q}_1 \cdot \bar{q}_2)^2\big]
+    \calL_{\text{VARO}} = \E\big[(q_1 \cdot q_2 - p_{\text{correct}})^2\big]
 \end{equation}
 
-This forces $q_1$ and $q_2$ to capture complementary information,
-avoiding redundancy.
+where $p_{\text{correct}} = P(x_t = x_t^* \mid x_{<t})$ is the softmax
+probability of the correct token. This forces the product $q_1 \cdot q_2$
+to estimate the model's actual confidence in each prediction.
 
 \paragraph{VI Regularization.}
-Penalizes degraded manifold:
+Penalizes degraded manifold and excessive severity (\Cref{sec:vi}):
 
 \begin{equation}
-    \calL_{\text{VI}} = \E\big[\text{ReLU}(\phi_{\min} - \phi)^2\big], \quad \phi_{\min} = 0.3
+    \calL_{\text{VI}} = \E\big[\text{ReLU}(\phi_{\text{critical}} - \phi)^2\big] + 0.3 \cdot \E[s^2], \quad \phi_{\text{critical}} = 0.5
 \end{equation}
 
 \paragraph{MAD Calibration.}
@@ -81,7 +82,7 @@ BCE between confidence and accuracy (\Cref{eq:mad_loss}).
 
 \paragraph{Metric Regularization.}
 \begin{equation}
-    \calL_{\text{metric}} = (\kappa(\bG) - 1)^2
+    \calL_{\text{metric}} = \log(\kappa(\bG) + 1)
 \end{equation}
 
 \paragraph{Eidos.}

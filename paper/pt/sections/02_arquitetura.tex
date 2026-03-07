@@ -30,10 +30,12 @@ O forward pass segue 4 est\'agios:
 \subsubsection{Est\'agio 1: Embeddings}
 
 \begin{equation}
-    \bh^{(0)} = \text{TokenEmb}(\bx) \in \R^{B \times T \times d}
+    \bh^{(0)} = \text{TokenEmb}(\bx) \cdot \sqrt{d} \in \R^{B \times T \times d}
 \end{equation}
 
-onde $d = d_{\text{model}}$ \'e a dimens\~ao do modelo. O \aletheion{} utiliza
+onde $d = d_{\text{model}}$ \'e a dimens\~ao do modelo. A sa\'ida do embedding
+\'e escalada por $\sqrt{d}$ seguindo a pr\'atica padr\~ao de transformers.
+O \aletheion{} utiliza
 \textbf{RoPE} (\textit{Rotary Position Embedding}) \cite{su2021roformer}
 aplicado dentro da aten\c{c}\~ao, em vez de embeddings posicionais aditivos:
 
@@ -61,15 +63,15 @@ A aten\c{c}\~ao causal garante autorregress\~ao:
 
 onde $\bm{M}_{ij} = -\infty$ se $j > i$ (m\'ascara causal triangular inferior).
 
-\paragraph{FeedForward com SwiGLU.}
-A camada feedforward utiliza a ativa\c{c}\~ao SwiGLU \cite{shazeer2020glu}:
+\paragraph{FeedForward com GELU.}
+A camada feedforward utiliza a ativa\c{c}\~ao GELU \cite{hendrycks2016gelu}:
 
 \begin{equation}
-    \text{FFN}(\bx) = (\text{Swish}(\bx \bm{W}_{\text{gate}}) \odot \bx \bm{W}_{\text{up}}) \bm{W}_{\text{down}}
+    \text{FFN}(\bx) = \bm{W}_2 \cdot \text{GELU}(\bm{W}_1 \bx)
 \end{equation}
 
-onde $\bm{W}_{\text{gate}}, \bm{W}_{\text{up}} \in \R^{d \times d_{\text{ff}}}$ e
-$\bm{W}_{\text{down}} \in \R^{d_{\text{ff}} \times d}$.
+onde $\bm{W}_1 \in \R^{d \times d_{\text{ff}}}$ e
+$\bm{W}_2 \in \R^{d_{\text{ff}} \times d}$, com $d_{\text{ff}} = 4d$.
 
 \subsubsection{Est\'agio 3: Proje\c{c}\~ao de Sa\'ida}
 

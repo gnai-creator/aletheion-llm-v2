@@ -264,6 +264,14 @@ if ($Step -eq "all" -or $Step -eq "train") {
     if ($Resume) {
         $trainArgs += @("--resume", $Resume)
         Write-Host "[TRAIN] Resuming de: $Resume" -ForegroundColor Yellow
+    } else {
+        # Auto-resume: verifica se existem checkpoints anteriores
+        $ckptDir = "$ROOT\checkpoints\350m_rtx4090"
+        $existingCkpts = Get-ChildItem "$ckptDir\step_*.pt" -ErrorAction SilentlyContinue
+        if ($existingCkpts -and $existingCkpts.Count -gt 0) {
+            Write-Host "[TRAIN] Checkpoints anteriores encontrados. Usando auto-resume." -ForegroundColor Yellow
+            $trainArgs += @("--resume", "auto")
+        }
     }
 
     & $PYTHON @trainArgs

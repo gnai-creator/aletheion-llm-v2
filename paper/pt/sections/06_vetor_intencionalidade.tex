@@ -22,72 +22,89 @@ composto por 4 indicadores:
 
 com $\sum w_i = 1$. Os 4 componentes s\~ao:
 
-\paragraph{$\phi_1$: Dimensionalidade Efetiva.}
-Mede quantas das 5 dimens\~oes est\~ao ativas:
+\paragraph{$\phi_1$: Diversidade Dimensional.}
+Mede a dispers\~ao ao longo das 5 dimens\~oes via desvio padr\~ao por eixo:
 
 \begin{equation}
-    \phi_1 = \frac{1}{5} \sum_{k=0}^{4} \mathbb{1}\big[\text{std}(c_k) > \epsilon_{\text{dim}}\big]
+    \phi_1 = \text{clamp}\left(\frac{\overline{\text{std}(c_k)}}{0.29}, 0, 1\right)
 \end{equation}
 
-Valores baixos indicam \textbf{colapso dimensional} --- o modelo projeta
-tokens em um subespa\c{c}o de menor dimens\~ao, perdendo capacidade
-epist\^emica.
+onde $\overline{\text{std}(c_k)}$ \'e a m\'edia dos desvios padr\~ao por eixo
+ao longo do batch. O normalizador $0.29$ corresponde ao std de uma
+distribui\c{c}\~ao uniforme $[0,1]$. Valores baixos indicam
+\textbf{colapso dimensional}.
 
 \paragraph{$\phi_2$: Dispers\~ao.}
-Mede a diversidade de posi\c{c}\~oes no manifold:
+Mede a diversidade de dist\^ancias ao centroide do batch:
 
 \begin{equation}
-    \phi_2 = \frac{1}{5} \sum_{k=0}^{4} \text{std}(c_k)
+    \phi_2 = \text{clamp}\left(\frac{\|\bm{c} - \bar{\bm{c}}\|_2}{\sqrt{5}}, 0, 1\right)
 \end{equation}
 
-\paragraph{$\phi_3$: Entropia do Campo Direcional.}
-Alta entropia indica explora\c{c}\~ao diversificada; baixa entropia indica
-estagna\c{c}\~ao:
+onde $\bar{\bm{c}}$ \'e o centroide e $\sqrt{5}$ \'e a dist\^ancia L2
+m\'axima em $[0,1]^5$.
+
+\paragraph{$\phi_3$: Entropia.}
+Mede a uniformidade distribucional das coordenadas entre eixos:
 
 \begin{equation}
-    \phi_3 = \frac{H(\bm{F})}{\log K}
+    p_k = \frac{\bar{c}_k}{\sum_j \bar{c}_j + \epsilon}, \quad
+    \phi_3 = \text{clamp}\left(\frac{-\sum_k p_k \log p_k}{\log 5}, 0, 1\right)
 \end{equation}
-
-onde $K$ \'e o n\'umero de bins de discretiza\c{c}\~ao.
 
 \paragraph{$\phi_4$: Distribui\c{c}\~ao de Confian\c{c}a.}
 Utiliza um perfil U-shape com desvio padr\~ao ideal $\sigma^* = 0.15$:
 
 \begin{equation}
-    \phi_4 = 1 - \left|\text{std}(\kappa) - \sigma^*\right| / \sigma^*
+    \phi_4 = \text{clamp}\left(1 - \frac{|\text{std}(\kappa) - \sigma^*|}{0.5}, 0, 1\right)
 \end{equation}
 
 Isso penaliza tanto confian\c{c}a uniformemente alta (excesso) quanto
-uniformemente baixa (colapso).
+uniformemente baixa (colapso). O normalizador $0.5$ fornece uma faixa
+de toler\^ancia mais ampla que $\sigma^*$.
 
 \subsection{Severidade e Ativa\c{c}\~ao}
 
-A severidade da interven\c{c}\~ao segue uma curva de raiz quadrada para
-resposta agressiva em casos cr\'iticos:
+A severidade \'e computada como um blend 70/30 entre vias anal\'itica
+e aprendida:
 
 \begin{equation}
-    s = \begin{cases}
-        0 & \text{se } \phi \geq \phi_{\text{cr\'itico}} \\
-        \sqrt{\frac{\phi_{\text{cr\'itico}} - \phi}{\phi_{\text{cr\'itico}}}} & \text{caso contr\'ario}
-    \end{cases}
+    s_{\text{anal}} = \sqrt{\max\left(0, 1 - \frac{\phi}{\phi_{\text{cr\'itico}}}\right)}
+    \label{eq:vi_severity_anal}
+\end{equation}
+
+\begin{equation}
+    s_{\text{learn}} = \sigma\big(\text{MLP}_{4 \to 8 \to 1}(\phi_1, \phi_2, \phi_3, \phi_4)\big)
+\end{equation}
+
+\begin{equation}
+    s = 0.7 \cdot s_{\text{anal}} + 0.3 \cdot s_{\text{learn}}
     \label{eq:vi_severity}
 \end{equation}
 
-com $\phi_{\text{cr\'itico}} = 0.5$ por padr\~ao.
+com $\phi_{\text{cr\'itico}} = 0.5$ por padr\~ao. A via anal\'itica fornece
+uma baseline determin\'istica via curva de raiz quadrada, enquanto a via
+aprendida permite que o modelo adapte a severidade a padr\~oes espec\'ificos
+dos componentes.
 
 \subsection{Corre\c{c}\~ao no Manifold}
 
-Quando $s > 0$, o VI injeta uma corre\c{c}\~ao determin\'istica nas
-coordenadas do manifold:
+Quando $s > 0$, o VI computa uma dire\c{c}\~ao de corre\c{c}\~ao via MLP
+aprendido:
 
 \begin{equation}
-    \bm{v} = s \cdot \alpha \cdot (\bm{c}_{\text{ideal}} - \bm{c})
+    \bm{d}_{\text{raw}} = \tanh\big(\text{MLP}_{9 \to 10 \to 5}([\phi_1, \phi_2, \phi_3, \phi_4, \bm{c}])\big)
+\end{equation}
+
+\begin{equation}
+    \bm{v} = \frac{\bm{d}_{\text{raw}}}{\|\bm{d}_{\text{raw}}\| + \epsilon} \cdot s \cdot \alpha
     \label{eq:vi_correction}
 \end{equation}
 
-onde $\alpha = 0.6$ \'e a for\c{c}a de inje\c{c}\~ao e
-$\bm{c}_{\text{ideal}}$ \'e determinado pela dire\c{c}\~ao de maior
-degrada\c{c}\~ao.
+onde $\alpha = 0.6$ \'e a for\c{c}a de inje\c{c}\~ao. A rede de dire\c{c}\~ao
+recebe os 4 componentes $\phi$ e as coordenadas 5D atuais como input
+(9 dimens\~oes no total), permitindo corre\c{c}\~ao dependente do contexto
+ao inv\'es de um alvo fixo.
 
 \subsection{Penalidade de Confian\c{c}a}
 
@@ -104,14 +121,18 @@ quando o manifold est\'a em estado de colapso.
 
 \subsection{Regulariza\c{c}\~ao VI}
 
-A loss de regulariza\c{c}\~ao VI incentiva sa\'ude m\'inima:
+A loss de regulariza\c{c}\~ao VI incentiva sa\'ude m\'inima e penaliza
+severidade excessiva:
 
 \begin{equation}
-    \calL_{\text{VI}} = \E\big[\text{ReLU}(\phi_{\min} - \phi)^2\big]
+    \calL_{\text{VI}} = \E\big[\text{ReLU}(\phi_{\text{cr\'itico}} - \phi)^2\big]
+    + 0.3 \cdot \E[s^2]
 \end{equation}
 
-com $\phi_{\min} = 0.3$. Isso garante que o manifold n\~ao degenere
-completamente durante o treinamento.
+com $\phi_{\text{cr\'itico}} = 0.5$. O primeiro termo garante que o manifold
+n\~ao degenere durante o treinamento. O segundo termo penaliza alta
+severidade, incentivando o modelo a manter a sa\'ude proativamente ao
+inv\'es de depender de corre\c{c}\~oes.
 
 \subsection{Resultado Emp\'irico: Preven\c{c}\~ao de Colapso}
 

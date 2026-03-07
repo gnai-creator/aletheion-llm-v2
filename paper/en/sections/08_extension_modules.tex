@@ -210,9 +210,11 @@ $\bm{z} \in \R^4$:
     \bh' = \bh + g \cdot \text{MLP}_{4 \to 32 \to d}(\bm{z})
 \end{equation}
 
-where $g = \sigma(\bm{w}^\top [\bh; \text{MLP}(\bm{z})])$ is a learned
-gate. The \texttt{PolicyBinding} maps states to generation parameters
-(temperature, max\_tokens).
+where $g = \sigma(\bm{w}^\top \bm{z} + b) \in [0, 1]$ is a learned
+gate that depends only on the state vector $\bm{z}$ (not on $\bh$),
+ensuring that the conditioning strength is determined purely by the
+external state. The \texttt{PolicyBinding} maps states to generation
+parameters (temperature, max\_tokens) via heuristic rules.
 
 \paragraph{Parameters:} {\raise.17ex\hbox{$\scriptstyle\sim$}}25.5K (StateConditioning) + 0 (PolicyBinding).
 

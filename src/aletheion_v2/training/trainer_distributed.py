@@ -320,10 +320,15 @@ class DistributedTrainer:
 
         history = []
         start_time = time.time()
+        tokens_at_start = self.tokens_seen  # Para tok/s correto no resume
         accum_metrics = {}
         accum_count = 0
 
         self.optimizer.zero_grad(set_to_none=True)
+
+        if self.is_main and self.global_step > 0:
+            print(f"[TRAIN] Resumindo do step {self.global_step}/{self.total_steps} "
+                  f"({self.tokens_seen:,} tokens ja processados)")
 
         epoch = 0
         data_iter = iter(self.train_loader)
@@ -360,8 +365,10 @@ class DistributedTrainer:
                 avg["step"] = self.global_step
                 avg["tokens_seen"] = self.tokens_seen
                 avg["epoch"] = epoch
+                elapsed = time.time() - start_time
+                tokens_this_run = self.tokens_seen - tokens_at_start
                 avg["tokens_per_sec"] = (
-                    self.tokens_seen / (time.time() - start_time)
+                    tokens_this_run / elapsed if elapsed > 0 else 0
                 )
 
                 if self.is_main:
