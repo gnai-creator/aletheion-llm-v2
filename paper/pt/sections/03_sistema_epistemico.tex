@@ -1,0 +1,137 @@
+% ============================================================
+% Secao 3: Sistema Epistemico
+% ============================================================
+
+\section{Sistema Epist\^emico}
+\label{sec:epistemico}
+
+O \texttt{EpistemicHead} \'e o componente central que diferencia o \aletheion{}
+de LLMs convencionais. Ele recebe os \textit{hidden states} finais do transformer
+e produz a \textbf{tomografia epist\^emica} --- uma estrutura com 30+ campos
+que captura o estado epist\^emico completo de cada token.
+
+\subsection{Tomografia Epist\^emica}
+
+\begin{definition}[Tomografia Epist\^emica]
+\label{def:tomografia}
+Para cada token $x_t$ em uma sequ\^encia de \textit{batch size} $B$ e
+comprimento $T$, a tomografia $\mathcal{T}_t$ \'e uma tupla:
+
+\begin{equation}
+    \mathcal{T}_t = \big(q_1, q_2, \bm{c}, \kappa, \phi, \bm{v}, \tau, \bm{e}, \gamma, \bm{s}, \ldots\big)
+\end{equation}
+
+onde $q_1 \in [0,1]$ \'e a incerteza aleat\'oria, $q_2 \in [0,1]$ a incerteza
+epist\^emica, $\bm{c} \in [0,1]^5$ as coordenadas no manifold 5D,
+$\kappa \in [0,1]$ a confian\c{c}a MAD, $\phi \in \R$ a sa\'ude do manifold,
+$\bm{v} \in \R^5$ o vetor de intencionalidade, $\tau > 0$ a temperatura
+adaptativa, e os demais campos s\~ao opcionais (tiers 1--3).
+\end{definition}
+
+\subsection{Decomposi\c{c}\~ao de Incerteza}
+
+Seguindo \cite{der2009aleatory}, decompomos a incerteza total em dois
+componentes ortogonais:
+
+\begin{align}
+    q_1 &= \sigma\big(\text{MLP}_{q_1}(\bh)\big) \in [0, 1] & \text{(incerteza aleat\'oria)} \\
+    q_2 &= \sigma\big(\text{MLP}_{q_2}(\bh)\big) \in [0, 1] & \text{(incerteza epist\^emica)}
+\end{align}
+
+\begin{itemize}
+    \item \textbf{$q_1$ (aleat\'oria)}: Captura a ambiguidade inerente ao
+    contexto --- ``O pr\'oximo token pode ser v\'arias coisas igualmente
+    v\'alidas''. Irredut\'ivel por mais dados.
+
+    \item \textbf{$q_2$ (epist\^emica)}: Captura a falta de conhecimento do
+    modelo --- ``N\~ao sei qual \'e o pr\'oximo token''. Redut\'ivel com mais
+    treinamento.
+\end{itemize}
+
+Os gates $q_1$ e $q_2$ s\~ao implementados como MLPs compactos:
+
+\begin{equation}
+    \text{QGate}(\bh) = \sigma\big(\bm{W}_2 \cdot \text{GELU}(\bm{W}_1 \bh + \bm{b}_1) + \bm{b}_2\big)
+\end{equation}
+
+com $\bm{W}_1 \in \R^{d/4 \times d}$ e $\bm{W}_2 \in \R^{1 \times d/4}$.
+
+\subsection{Temperatura Adaptativa}
+
+A temperatura de amostragem \'e controlada adaptativamente pela incerteza:
+
+\begin{equation}
+    \tau = \tau_{\min} + (\tau_{\max} - \tau_{\min}) \cdot \sigma\big(\text{MLP}_\tau(q_1, q_2)\big)
+\end{equation}
+
+onde $\tau_{\min} = 0.1$ e $\tau_{\max} = 2.0$. Tokens com alta incerteza
+recebem temperatura mais alta (distribui\c{c}\~ao mais uniforme), enquanto
+tokens confi\'aveis recebem temperatura baixa (distribui\c{c}\~ao mais afiada).
+
+\subsection{Organiza\c{c}\~ao em 3 Tiers}
+
+Os sub-heads do \texttt{EpistemicHead} s\~ao organizados em 3 tiers de
+complexidade crescente:
+
+\begin{table}[H]
+\centering
+\caption{Organiza\c{c}\~ao dos sub-heads em tiers.}
+\label{tab:tiers}
+\begin{tabular}{clrl}
+\toprule
+\textbf{Tier} & \textbf{M\'odulo} & \textbf{Params} & \textbf{Sa\'ida} \\
+\midrule
+\multirow{5}{*}{\textbf{Core}} & Q1Gate & ~$d/2$ & $q_1$ [B,T,1] \\
+& Q2Gate & ~$d/2$ & $q_2$ [B,T,1] \\
+& DRM Manifold & ~50K & coords [B,T,5] \\
+& MAD Confidence & ~2K & confidence [B,T,1] \\
+& VI (Intencionalidade) & ~5K & $\phi$, $\bm{v}$ \\
+\midrule
+\multirow{3}{*}{\textbf{Tier 1}} & EidosDecay & ~368 & axis\_balance [B,T,5] \\
+& Filosofia3 & ~373 & conflict [B,T,1] \\
+& SelfModel & ~982 & mood, energy, drives \\
+\midrule
+\multirow{4}{*}{\textbf{Tier 2}} & TaskHead & ~50K & task\_probs [B,T,9] \\
+& AmbiguityHead & ~50K & ambiguity [B,T,1] \\
+& PlasticityGate & ~12K & plasticity [B,T,1] \\
+& FrontierHead & ~129 & frontier [B,T,1] \\
+\midrule
+\multirow{3}{*}{\textbf{Tier 3}} & HumanStateHead & ~25K & psi [B,T,5] \\
+& CausalState & ~26K & condicionamento \\
+& ContrastiveHead & ~200K & divergence [B,T,1] \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+O overhead total dos sub-heads \'e de ~364K par\^ametros, representando
+\textbf{<0.3\%} do modelo de 354M. Todos os m\'odulos possuem flags
+\texttt{enable\_*} para ativa\c{c}\~ao condicional.
+
+\subsection{Forward do EpistemicHead}
+
+O forward \'e executado sequencialmente dentro de cada tier, com
+depend\^encias expl\'icitas:
+
+\begin{algorithm}[H]
+\caption{Forward do EpistemicHead}
+\label{alg:epistemic_forward}
+\begin{algorithmic}[1]
+\REQUIRE $\bh \in \R^{B \times T \times d}$, $\bm{A}$ (padr\~oes de aten\c{c}\~ao)
+\STATE \textbf{// Core}
+\STATE $q_1 \leftarrow \text{Q1Gate}(\bh)$
+\STATE $q_2 \leftarrow \text{Q2Gate}(\bh)$
+\STATE $\bm{c} \leftarrow \text{ManifoldEmb}(\bh)$ \COMMENT{coords 5D}
+\STATE $\bG \leftarrow \text{MetricTensor}()$ \COMMENT{tensor m\'etrico SPD}
+\STATE $d^2 \leftarrow \text{GeodesicDist}(\bm{c}, \bG)$ \COMMENT{dist\^ancia}
+\STATE $\kappa \leftarrow \text{MADConfidence}(\bm{c})$ \COMMENT{confian\c{c}a}
+\STATE $\phi \leftarrow \text{PhiField}(\bm{c}, \kappa)$ \COMMENT{sa\'ude}
+\STATE $\bm{v} \leftarrow \text{VI}(\phi, \kappa)$ \COMMENT{corre\c{c}\~ao}
+\STATE $\tau \leftarrow \text{AdaptiveTemp}(q_1, q_2)$ \COMMENT{temperatura}
+\STATE \textbf{// Tier 1} (se habilitados)
+\STATE $\bm{e} \leftarrow \text{EidosDecay}(\bm{c}, \kappa)$
+\STATE $\gamma \leftarrow \text{Filosofia3}(\phi_{\text{comp}}, \kappa)$
+\STATE $\bm{s} \leftarrow \text{SelfModel}(\bh, q_2, \phi, \kappa)$
+\STATE \textbf{// Tier 2--3} (omitido por brevidade)
+\RETURN $\mathcal{T}$ (tomografia completa)
+\end{algorithmic}
+\end{algorithm}

@@ -1,0 +1,193 @@
+% ============================================================
+% Secao 9: Loss Composta
+% ============================================================
+
+\section{Loss Composta}
+\label{sec:loss}
+
+O \aletheion{} utiliza uma loss composta com 13 componentes, agrupadas em
+cross-entropy padr\~ao e 12 losses epist\^emicas com \textit{annealing}
+progressivo.
+
+\subsection{Formula\c{c}\~ao Geral}
+
+\begin{equation}
+    \calL_{\text{total}} = \lambda_{\text{CE}} \cdot \calL_{\text{CE}} + \alpha(t) \cdot \sum_{i=1}^{12} \lambda_i \cdot \calL_i
+    \label{eq:total_loss}
+\end{equation}
+
+onde $\alpha(t) \in [0, 1]$ \'e o fator de \textit{annealing} e $\lambda_i$
+s\~ao pesos por componente.
+
+\subsection{Cross-Entropy}
+
+A loss principal \'e a cross-entropy padr\~ao para modelagem autorregressiva:
+
+\begin{equation}
+    \calL_{\text{CE}} = -\frac{1}{|\calS|} \sum_{t \in \calS} \log P(x_t \mid x_{<t})
+\end{equation}
+
+onde $P(x_t \mid x_{<t}) = \text{softmax}(\bm{l}_t / \tau)_{x_t}$ e
+$\calS$ exclui tokens de padding.
+
+\subsection{12 Losses Epist\^emicas}
+
+\begin{table}[H]
+\centering
+\caption{Componentes da loss composta com pesos default.}
+\label{tab:losses}
+\begin{tabular}{clcp{6cm}}
+\toprule
+\textbf{\#} & \textbf{Nome} & \textbf{$\lambda$} & \textbf{Objetivo} \\
+\midrule
+1 & VARO & 0.01 & Regulariza vari\^ancia condicional $q_1 \cdot q_2$ \\
+2 & VI & 0.01 & Mant\'em $\phi \geq \phi_{\min}$ \\
+3 & MAD Calibra\c{c}\~ao & 0.01 & Calibra confian\c{c}a vs acur\'acia \\
+4 & M\'etrica & 0.001 & $\kappa(\bG) \to 1$ (condition number) \\
+5 & Eidos & 0.005 & Balanceamento de eixos \\
+6 & Conflito & 0.005 & Minimiza $\gamma^2$ \\
+7 & Consci\^encia & 0.003 & Energia $\geq 0.2$ \\
+8 & Grounding & 0.005 & Entropia tarefas + calibra ambiguidade \\
+9 & Plasticidade & 0.002 & Plasticidade $\geq 0.3$ \\
+10 & Fronteira & 0.002 & Maximiza explora\c{c}\~ao \\
+11 & MOPsi & 0.003 & Alinhamento $\psi$-confian\c{c}a \\
+12 & Contrastivo & 0.003 & Anti-colapso das vis\~oes \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Detalhamento das Losses}
+
+\paragraph{VARO (Vari\^ancia Condicional).}
+Regulariza a intera\c{c}\~ao entre as duas incertezas:
+
+\begin{equation}
+    \calL_{\text{VARO}} = \E\big[(q_1 \cdot q_2 - \bar{q}_1 \cdot \bar{q}_2)^2\big]
+\end{equation}
+
+Isso for\c{c}a $q_1$ e $q_2$ a capturarem informa\c{c}\~oes complementares,
+evitando redund\^ancia.
+
+\paragraph{Regulariza\c{c}\~ao VI.}
+Penaliza manifold degradado:
+
+\begin{equation}
+    \calL_{\text{VI}} = \E\big[\text{ReLU}(\phi_{\min} - \phi)^2\big], \quad \phi_{\min} = 0.3
+\end{equation}
+
+\paragraph{MAD Calibra\c{c}\~ao.}
+BCE entre confian\c{c}a e acur\'acia (\Cref{eq:mad_loss}).
+
+\paragraph{Regulariza\c{c}\~ao M\'etrica.}
+\begin{equation}
+    \calL_{\text{metric}} = (\kappa(\bG) - 1)^2
+\end{equation}
+
+\paragraph{Eidos.}
+Penaliza desbalanceamento de eixos:
+
+\begin{equation}
+    \calL_{\text{eidos}} = \E\big[(\text{std}(\text{axis\_balance}) - 0.15)^2\big]
+\end{equation}
+
+\paragraph{Conflito.}
+Minimiza intensidade de conflito $\phi$-$\psi$:
+
+\begin{equation}
+    \calL_{\text{conflito}} = \E[\gamma^2]
+\end{equation}
+
+\paragraph{Consci\^encia.}
+Impede colapso de energia:
+
+\begin{equation}
+    \calL_{\text{cons}} = \E\big[\text{ReLU}(0.2 - \text{energy})^2\big]
+\end{equation}
+
+\paragraph{Grounding.}
+Entropia das probabilidades de tarefa + calibra\c{c}\~ao de ambiguidade:
+
+\begin{equation}
+    \calL_{\text{ground}} = -\E\Big[\sum_k p_k \log p_k\Big] + \E\big[(\text{ambiguity} - q_1)^2\big]
+\end{equation}
+
+\paragraph{Plasticidade.}
+Impede deple\c{c}\~ao total:
+
+\begin{equation}
+    \calL_{\text{plast}} = \E\big[\text{ReLU}(0.3 - \text{plast})^2\big]
+\end{equation}
+
+\paragraph{Fronteira.}
+Maximiza explora\c{c}\~ao de regi\~oes novas:
+
+\begin{equation}
+    \calL_{\text{frontier}} = -\E\big[f_{\text{frontier}} \cdot \log(\text{novelty} + \epsilon)\big]
+\end{equation}
+
+\paragraph{MOPsi.}
+Alinha $\psi$ com confian\c{c}a:
+
+\begin{equation}
+    \calL_{\text{mopsi}} = \E\big[(\psi_{\text{score}} - \kappa)^2\big]
+\end{equation}
+
+\paragraph{Contrastivo.}
+Anti-colapso: garante que as duas vis\~oes n\~ao sejam id\^enticas:
+
+\begin{equation}
+    \calL_{\text{contr}} = -\E[\log(\text{div} + \epsilon)] + 0.1 \cdot \E\big[\text{ReLU}(\text{div} - 0.8)^2\big]
+\end{equation}
+
+O primeiro termo maximiza diverg\^encia (anti-colapso), o segundo
+impede diverg\^encia excessiva.
+
+\subsection{Schedule de Annealing}
+\label{sec:annealing}
+
+As losses epist\^emicas s\~ao introduzidas gradualmente para estabilizar
+o treinamento:
+
+\begin{equation}
+    \alpha(t) = \begin{cases}
+        0 & \text{se } t < 0.1 \cdot T_{\text{total}} \\
+        \frac{t - 0.1T}{0.4T} & \text{se } 0.1T \leq t < 0.5T \\
+        1 & \text{se } t \geq 0.5T
+    \end{cases}
+    \label{eq:annealing}
+\end{equation}
+
+\begin{itemize}
+    \item \textbf{Fase 1} (0--10\%): Apenas $\calL_{\text{CE}}$. O modelo
+    aprende a distribuir tokens antes de qualquer sinal epist\^emico.
+
+    \item \textbf{Fase 2} (10--50\%): $\alpha$ cresce linearmente de 0 a 1.
+    As losses epist\^emicas s\~ao introduzidas suavemente.
+
+    \item \textbf{Fase 3} (50--100\%): $\alpha = 1$. Todas as losses ativas
+    com pesos plenos.
+\end{itemize}
+
+\begin{theorem}[Estabilidade do Annealing]
+O schedule de annealing garante que os gradientes epist\^emicos n\~ao
+dominam os gradientes de CE nas fases iniciais:
+
+\begin{equation}
+    \frac{\|\nabla_\theta \alpha \calL_{\text{epist}}\|}{\|\nabla_\theta \calL_{\text{CE}}\|} \leq \alpha(t) \cdot \frac{\sum_i \lambda_i \|\nabla_\theta \calL_i\|}{\|\nabla_\theta \calL_{\text{CE}}\|}
+\end{equation}
+
+Para $\alpha(t) \ll 1$ nas fases iniciais, o r\'acio \'e controlado.
+\end{theorem}
+
+\subsection{Pesos dos Componentes}
+
+Os pesos $\lambda_i$ foram calibrados empiricamente com os seguintes
+crit\'erios:
+
+\begin{enumerate}
+    \item $\lambda_{\text{CE}} = 1.0$ (ancora)
+    \item Losses de regulariza\c{c}\~ao ($\leq 0.01$): impedem degenera\c{c}\~ao
+    sem dominar
+    \item Losses de calibra\c{c}\~ao ($\leq 0.005$): ajuste fino de sinais
+    \item Losses de explora\c{c}\~ao ($\leq 0.003$): incentivam diversidade
+\end{enumerate}

@@ -1,0 +1,139 @@
+% ============================================================
+% Secao 2: Arquitetura Geral
+% ============================================================
+
+\section{Arquitetura}
+\label{sec:arquitetura}
+
+O \aletheion{} segue a arquitetura \textit{decoder-only} transformer
+\cite{vaswani2017attention, radford2019gpt2} com modifica\c{c}\~oes para
+suportar o sistema epist\^emico intr\'inseco.
+
+\subsection{Vis\~ao Geral}
+
+Dado uma sequ\^encia de tokens $\bx = (x_1, \ldots, x_T)$, o modelo produz
+duas sa\'idas simult\^aneas:
+
+\begin{equation}
+    \text{\aletheion{}}(\bx) = \big(\underbrace{\bm{l} \in \R^{B \times T \times V}}_{\text{logits}},\
+    \underbrace{\mathcal{T} \in \R^{B \times T \times 30+}}_{\text{tomografia epist\^emica}}\big)
+\end{equation}
+
+onde $B$ \'e o \textit{batch size}, $T$ o comprimento da sequ\^encia, $V$ o
+tamanho do vocabul\'ario, e $\mathcal{T}$ \'e a tomografia epist\^emica contendo
+30+ campos por token.
+
+\subsection{Pipeline de Forward Pass}
+
+O forward pass segue 4 est\'agios:
+
+\subsubsection{Est\'agio 1: Embeddings}
+
+\begin{equation}
+    \bh^{(0)} = \text{TokenEmb}(\bx) \in \R^{B \times T \times d}
+\end{equation}
+
+onde $d = d_{\text{model}}$ \'e a dimens\~ao do modelo. O \aletheion{} utiliza
+\textbf{RoPE} (\textit{Rotary Position Embedding}) \cite{su2021roformer}
+aplicado dentro da aten\c{c}\~ao, em vez de embeddings posicionais aditivos:
+
+\begin{equation}
+    \text{RoPE}(\bm{q}, m) = \bm{q} \odot \cos(m\bm{\theta}) + \text{rotate}(\bm{q}) \odot \sin(m\bm{\theta})
+\end{equation}
+
+onde $m$ \'e a posi\c{c}\~ao e $\bm{\theta}_i = 10000^{-2i/d_{\text{head}}}$.
+
+\subsubsection{Est\'agio 2: Transformer Blocks ($\times N$)}
+
+Cada bloco segue o padr\~ao \textit{pre-norm} (estilo LLaMA/GPT-2):
+
+\begin{align}
+    \bm{a}^{(\ell)} &= \bh^{(\ell-1)} + \text{MultiHeadAttn}\big(\text{LN}(\bh^{(\ell-1)}), \text{RoPE}\big) \label{eq:attn} \\
+    \bh^{(\ell)} &= \bm{a}^{(\ell)} + \text{FeedForward}\big(\text{LN}(\bm{a}^{(\ell)})\big) \label{eq:ffn}
+\end{align}
+
+\paragraph{Aten\c{c}\~ao Multi-Head com M\'ascara Causal.}
+A aten\c{c}\~ao causal garante autorregress\~ao:
+
+\begin{equation}
+    \text{Attn}(\bm{Q}, \bm{K}, \bm{V}) = \text{softmax}\left(\frac{\bm{Q}\bm{K}^\top}{\sqrt{d_k}} + \bm{M}\right)\bm{V}
+\end{equation}
+
+onde $\bm{M}_{ij} = -\infty$ se $j > i$ (m\'ascara causal triangular inferior).
+
+\paragraph{FeedForward com SwiGLU.}
+A camada feedforward utiliza a ativa\c{c}\~ao SwiGLU \cite{shazeer2020glu}:
+
+\begin{equation}
+    \text{FFN}(\bx) = (\text{Swish}(\bx \bm{W}_{\text{gate}}) \odot \bx \bm{W}_{\text{up}}) \bm{W}_{\text{down}}
+\end{equation}
+
+onde $\bm{W}_{\text{gate}}, \bm{W}_{\text{up}} \in \R^{d \times d_{\text{ff}}}$ e
+$\bm{W}_{\text{down}} \in \R^{d_{\text{ff}} \times d}$.
+
+\subsubsection{Est\'agio 3: Proje\c{c}\~ao de Sa\'ida}
+
+\begin{equation}
+    \bm{l} = \text{LN}_{\text{final}}(\bh^{(N)}) \cdot \bm{W}_{\text{emb}}^\top
+\end{equation}
+
+O \texttt{lm\_head} \'e \textbf{tied} com a matriz de embedding
+($\bm{W}_{\text{emb}} \in \R^{V \times d}$), reduzindo par\^ametros e
+melhorando generaliza\c{c}\~ao \cite{press2017tying}.
+
+\subsubsection{Est\'agio 4: EpistemicHead}
+
+Simultaneamente ao est\'agio 3, os \textit{hidden states}
+$\bh^{(N)} \in \R^{B \times T \times d}$ e os padr\~oes de aten\c{c}\~ao
+s\~ao passados ao \texttt{EpistemicHead}:
+
+\begin{equation}
+    \mathcal{T} = \text{EpistemicHead}\big(\bh^{(N)}, \bm{A}^{(1:N)}\big)
+\end{equation}
+
+Este \'e o componente central que diferencia o \aletheion{} de LLMs convencionais
+e ser\'a detalhado na \Cref{sec:epistemico}.
+
+\subsection{Hiperpar\^ametros do Modelo}
+
+A \Cref{tab:config_base} apresenta a configura\c{c}\~ao do modelo de 354M
+par\^ametros:
+
+\begin{table}[H]
+\centering
+\caption{Configura\c{c}\~ao do modelo 354M (RTX 4090).}
+\label{tab:config_base}
+\begin{tabular}{lrl}
+\toprule
+\textbf{Par\^ametro} & \textbf{Valor} & \textbf{Descri\c{c}\~ao} \\
+\midrule
+$d_{\text{model}}$ & 1024 & Dimens\~ao do modelo \\
+$n_{\text{heads}}$ & 16 & N\'umero de heads de aten\c{c}\~ao \\
+$d_{\text{head}}$ & 64 & Dimens\~ao por head ($d/n_h$) \\
+$n_{\text{layers}}$ & 24 & N\'umero de blocos transformer \\
+$d_{\text{ff}}$ & 4096 & Dimens\~ao feedforward \\
+$T_{\max}$ & 1024 & Comprimento m\'aximo de sequ\^encia \\
+$|V|$ & 50.257 & Tamanho do vocabul\'ario (tiktoken GPT-2) \\
+Dropout & 0.1 & Taxa de dropout \\
+\midrule
+\multicolumn{3}{l}{\textit{Treinamento}} \\
+Batch size & 4 & Micro-batch por GPU \\
+Grad. accum. & 16 & Steps de acumula\c{c}\~ao \\
+Effective batch & 64 & Sequ\^encias por update \\
+Mixed precision & bf16 & Precis\~ao mista \\
+Learning rate & $3 \times 10^{-4}$ & Com warmup cosine \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Weight Tying}
+
+O \aletheion{} utiliza \textit{weight tying} entre a camada de embedding e o
+\texttt{lm\_head}:
+
+\begin{equation}
+    \bm{W}_{\text{lm\_head}} = \bm{W}_{\text{emb}}^\top
+\end{equation}
+
+Para um vocabul\'ario de 50.257 tokens com $d = 1024$, isso economiza
+$\sim$51.5M par\^ametros (14.5\% do total).

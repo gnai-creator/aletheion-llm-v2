@@ -1,0 +1,129 @@
+% ============================================================
+% Secao 6: Vetor de Intencionalidade (VI)
+% ============================================================
+
+\section{Vetor de Intencionalidade (VI)}
+\label{sec:vi}
+
+O Vetor de Intencionalidade (VI) monitora a sa\'ude do manifold e aplica
+corre\c{c}\~oes quando detecta degrada\c{c}\~ao. Ele funciona como um
+``sistema imunol\'ogico'' do manifold, prevenindo colapso dimensional
+e infla\c{c}\~ao de confian\c{c}a.
+
+\subsection{Campo $\phi$: Sa\'ude do Manifold}
+
+A sa\'ude do manifold \'e quantificada pelo campo escalar $\phi(\calM)$,
+composto por 4 indicadores:
+
+\begin{equation}
+    \phi(\calM) = \sum_{i=1}^{4} w_i \cdot \phi_i
+    \label{eq:phi_field}
+\end{equation}
+
+com $\sum w_i = 1$. Os 4 componentes s\~ao:
+
+\paragraph{$\phi_1$: Dimensionalidade Efetiva.}
+Mede quantas das 5 dimens\~oes est\~ao ativas:
+
+\begin{equation}
+    \phi_1 = \frac{1}{5} \sum_{k=0}^{4} \mathbb{1}\big[\text{std}(c_k) > \epsilon_{\text{dim}}\big]
+\end{equation}
+
+Valores baixos indicam \textbf{colapso dimensional} --- o modelo projeta
+tokens em um subespa\c{c}o de menor dimens\~ao, perdendo capacidade
+epist\^emica.
+
+\paragraph{$\phi_2$: Dispers\~ao.}
+Mede a diversidade de posi\c{c}\~oes no manifold:
+
+\begin{equation}
+    \phi_2 = \frac{1}{5} \sum_{k=0}^{4} \text{std}(c_k)
+\end{equation}
+
+\paragraph{$\phi_3$: Entropia do Campo Direcional.}
+Alta entropia indica explora\c{c}\~ao diversificada; baixa entropia indica
+estagna\c{c}\~ao:
+
+\begin{equation}
+    \phi_3 = \frac{H(\bm{F})}{\log K}
+\end{equation}
+
+onde $K$ \'e o n\'umero de bins de discretiza\c{c}\~ao.
+
+\paragraph{$\phi_4$: Distribui\c{c}\~ao de Confian\c{c}a.}
+Utiliza um perfil U-shape com desvio padr\~ao ideal $\sigma^* = 0.15$:
+
+\begin{equation}
+    \phi_4 = 1 - \left|\text{std}(\kappa) - \sigma^*\right| / \sigma^*
+\end{equation}
+
+Isso penaliza tanto confian\c{c}a uniformemente alta (excesso) quanto
+uniformemente baixa (colapso).
+
+\subsection{Severidade e Ativa\c{c}\~ao}
+
+A severidade da interven\c{c}\~ao segue uma curva de raiz quadrada para
+resposta agressiva em casos cr\'iticos:
+
+\begin{equation}
+    s = \begin{cases}
+        0 & \text{se } \phi \geq \phi_{\text{cr\'itico}} \\
+        \sqrt{\frac{\phi_{\text{cr\'itico}} - \phi}{\phi_{\text{cr\'itico}}}} & \text{caso contr\'ario}
+    \end{cases}
+    \label{eq:vi_severity}
+\end{equation}
+
+com $\phi_{\text{cr\'itico}} = 0.5$ por padr\~ao.
+
+\subsection{Corre\c{c}\~ao no Manifold}
+
+Quando $s > 0$, o VI injeta uma corre\c{c}\~ao determin\'istica nas
+coordenadas do manifold:
+
+\begin{equation}
+    \bm{v} = s \cdot \alpha \cdot (\bm{c}_{\text{ideal}} - \bm{c})
+    \label{eq:vi_correction}
+\end{equation}
+
+onde $\alpha = 0.6$ \'e a for\c{c}a de inje\c{c}\~ao e
+$\bm{c}_{\text{ideal}}$ \'e determinado pela dire\c{c}\~ao de maior
+degrada\c{c}\~ao.
+
+\subsection{Penalidade de Confian\c{c}a}
+
+Quando a confian\c{c}a est\'a inflada (alta confian\c{c}a com manifold
+degradado), o VI aplica uma penalidade:
+
+\begin{equation}
+    \kappa_{\text{corrigida}} = \kappa \cdot (1 - \beta \cdot s)
+    \label{eq:vi_conf_penalty}
+\end{equation}
+
+com $\beta = 0.4$. Isso impede que o modelo reporte alta confian\c{c}a
+quando o manifold est\'a em estado de colapso.
+
+\subsection{Regulariza\c{c}\~ao VI}
+
+A loss de regulariza\c{c}\~ao VI incentiva sa\'ude m\'inima:
+
+\begin{equation}
+    \calL_{\text{VI}} = \E\big[\text{ReLU}(\phi_{\min} - \phi)^2\big]
+\end{equation}
+
+com $\phi_{\min} = 0.3$. Isso garante que o manifold n\~ao degenere
+completamente durante o treinamento.
+
+\subsection{Resultado Emp\'irico: Preven\c{c}\~ao de Colapso}
+
+Em simula\c{c}\~oes com o sistema ATIC (predecessor determin\'istico),
+o VI demonstrou:
+
+\begin{itemize}
+    \item Recupera\c{c}\~ao de dimensionalidade efetiva: $D_{\text{eff}}$
+    de 2.2 para 3.2 (de 5 poss\'iveis)
+    \item Redu\c{c}\~ao de confian\c{c}a inflada: de 0.60 para 0.57
+    \item 3 de 4 indicadores de sa\'ude melhorados
+\end{itemize}
+
+No \aletheion{}, estes mecanismos s\~ao treinados \textit{end-to-end},
+potencialmente superando os resultados do sistema determin\'istico.

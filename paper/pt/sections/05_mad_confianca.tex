@@ -1,0 +1,110 @@
+% ============================================================
+% Secao 5: MAD - Metric-Aware Distance e Confianca
+% ============================================================
+
+\section{MAD: Confian\c{c}a via Dist\^ancia M\'etrica}
+\label{sec:mad}
+
+O sistema \textit{Metric-Aware Distance} (MAD) traduz dist\^ancias geod\'esicas
+no manifold 5D em confian\c{c}a calibrada, utilizando um par\^ametro de escala
+$\tau^2$ aprendido via \textit{backpropagation}.
+
+\subsection{Confian\c{c}a Gaussiana}
+
+A confian\c{c}a de um token \'e definida como um \textit{decay} Gaussiano da
+dist\^ancia geod\'esica ao centroide do manifold:
+
+\begin{equation}
+    \kappa(\bm{c}) = \exp\left(-\frac{d_{\bG}^2(\bm{c}, \bm{\mu})}{2\tau^2}\right)
+    \label{eq:mad_conf}
+\end{equation}
+
+onde $d_{\bG}^2$ \'e a dist\^ancia geod\'esica ao quadrado (\Cref{eq:geodesic}),
+$\bm{\mu}$ \'e o centroide (fixo em $[0.5, 0.5, 0.5, 0.5, 0.5]$), e
+$\tau^2$ \'e o par\^ametro de escala.
+
+\subsection{$\tau^2$ Bayesiano}
+
+O par\^ametro $\tau^2$ \'e parametrizado em escala logar\'itmica para
+garantir positividade:
+
+\begin{equation}
+    \tau^2 = \exp(\log \tau^2_{\text{param}})
+\end{equation}
+
+onde $\log \tau^2_{\text{param}}$ \'e um \texttt{nn.Parameter} aprendido.
+A inicializa\c{c}\~ao segue uma prior Inverse-Gamma:
+
+\begin{equation}
+    \tau^2 \sim \text{IG}(\alpha_0, \beta_0), \quad \alpha_0 = 2, \ \beta_0 = 1
+\end{equation}
+
+O modo da prior IG$(2, 1)$ \'e $\beta_0 / (\alpha_0 + 1) = 1/3$, fornecendo
+uma inicializa\c{c}\~ao conservadora que resulta em confian\c{c}a moderada.
+
+\subsection{Calibra\c{c}\~ao via Loss}
+
+A calibra\c{c}\~ao \'e for\c{c}ada pela \texttt{MADCalibrationLoss}, que utiliza
+\textit{Binary Cross-Entropy} entre confian\c{c}a e acur\'acia:
+
+\begin{equation}
+    \calL_{\text{MAD}} = -\frac{1}{|\calS|}\sum_{t \in \calS} \Big[
+        y_t \log \kappa_t + (1 - y_t) \log(1 - \kappa_t)
+    \Big]
+    \label{eq:mad_loss}
+\end{equation}
+
+onde $y_t = \mathbb{1}[\hat{x}_t = x_t^*]$ \'e o indicador de predi\c{c}\~ao
+correta e $\calS$ \'e o conjunto de tokens v\'alidos (ap\'os mascaramento).
+
+\begin{theorem}[Calibra\c{c}\~ao no Equil\'ibrio]
+\label{thm:calibration}
+No m\'inimo da \Cref{eq:mad_loss}, a confian\c{c}a $\kappa$ \'e calibrada:
+
+\begin{equation}
+    \E[\kappa_t \mid \kappa_t = p] = p, \quad \forall p \in [0, 1]
+\end{equation}
+
+ou seja, tokens com confian\c{c}a $p$ est\~ao corretos com probabilidade $p$.
+\end{theorem}
+
+\begin{proof}
+A BCE \'e minimizada quando $\kappa_t = P(y_t = 1 | \bm{c}_t)$
+(propriedade conhecida da entropia cruzada bin\'aria). Portanto, no
+equil\'ibrio, $\kappa_t$ estima a probabilidade verdadeira de acerto,
+que \'e exatamente a defini\c{c}\~ao de calibra\c{c}\~ao.
+\end{proof}
+
+\subsection{Fluxo de Gradiente}
+
+O gradiente da loss MAD flui at\'e o par\^ametro $\log \tau^2$:
+
+\begin{equation}
+    \frac{\partial \calL_{\text{MAD}}}{\partial \log \tau^2} =
+    \frac{\partial \calL_{\text{MAD}}}{\partial \kappa} \cdot
+    \frac{\partial \kappa}{\partial d^2} \cdot
+    \frac{\partial d^2}{\partial \tau^2} \cdot
+    \frac{\partial \tau^2}{\partial \log \tau^2}
+\end{equation}
+
+\begin{align}
+    \frac{\partial \kappa}{\partial d^2} &= -\frac{\kappa}{2\tau^2} \\
+    \frac{\partial d^2}{\partial \tau^2} &= 0 \quad \text{($d^2$ n\~ao depende de $\tau^2$)} \\
+    \frac{\partial \kappa}{\partial \tau^2} &= \frac{d^2 \kappa}{2\tau^4}
+\end{align}
+
+Al\'em disso, o gradiente tamb\'em flui at\'e as coordenadas $\bm{c}$
+(via $d^2$), at\'e o tensor m\'etrico $\bG$ (via $d^2$), e at\'e os
+pesos da MLP de embedding (\Cref{eq:manifold_emb}).
+
+\subsection{Implementa\c{c}\~ao com Autocast}
+
+Por quest\~oes de estabilidade num\'erica com precis\~ao mista (bf16),
+a BCE \'e implementada via \texttt{binary\_cross\_entropy\_with\_logits}:
+
+\begin{equation}
+    \text{logit}(\kappa) = \log\frac{\kappa}{1 - \kappa}
+\end{equation}
+
+seguido de \texttt{F.binary\_cross\_entropy\_with\_logits(logit, target)},
+que \'e numericamente est\'avel sob autocast.

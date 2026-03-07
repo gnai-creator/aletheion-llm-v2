@@ -1,0 +1,128 @@
+% ============================================================
+% Secao 12: Conclusao
+% ============================================================
+
+\section{Conclus\~ao}
+\label{sec:conclusao}
+
+\subsection{Resumo das Contribui\c{c}\~oes}
+
+Apresentamos o \aletheion{}, um LLM \textit{decoder-only} que integra
+um sistema epist\^emico completo como m\'odulos neurais trein\'aveis.
+As principais contribui\c{c}\~oes s\~ao:
+
+\begin{enumerate}
+    \item \textbf{Epistemologia intr\'inseca}: Pela primeira vez, um LLM
+    produz tomografia epist\^emica completa (30+ campos) por token,
+    treinada \textit{end-to-end} com o modelo de linguagem.
+
+    \item \textbf{Manifold Riemanniano 5D}: Tokens s\~ao mapeados para
+    um espa\c{c}o geom\'etrico aprendido onde dist\^ancias geod\'esicas
+    definem confian\c{c}a calibrada.
+
+    \item \textbf{Overhead m\'inimo}: Os 11 sub-heads epist\^emicos
+    adicionam apenas ~364K par\^ametros (<0.3\%), demonstrando que
+    capacidade epist\^emica n\~ao requer aumento significativo de
+    par\^ametros.
+
+    \item \textbf{Calibra\c{c}\~ao por constru\c{c}\~ao}: A loss MAD
+    (\Cref{thm:calibration}) garante calibra\c{c}\~ao no equil\'ibrio,
+    diferente de m\'etodos p\'os-hoc como temperature scaling.
+
+    \item \textbf{Preven\c{c}\~ao de colapso}: O VI (\Cref{sec:vi})
+    e EidosDecay (\Cref{sec:eidos}) previnem degenera\c{c}\~ao do
+    manifold, um problema identificado empiricamente no sistema
+    predecessor (ATIC).
+
+    \item \textbf{Continual Learning nativo}: EWC + Replay integrados
+    no trainer permitem treinamento em m\'ultiplas fases sem
+    \textit{catastrophic forgetting}.
+
+    \item \textbf{Escalabilidade}: Configura\c{c}\~oes de 1M a 640B
+    par\^ametros com a mesma arquitetura, facilitando pesquisa
+    (modelos pequenos) e deploy (modelos grandes).
+\end{enumerate}
+
+\subsection{Compara\c{c}\~ao com o ATIC}
+
+O \aletheion{} surgiu da necessidade de superar as limita\c{c}\~oes do
+sistema ATIC, um orquestrador determin\'istico que envolve LLMs externos:
+
+\begin{table}[H]
+\centering
+\caption{Compara\c{c}\~ao ATIC vs \aletheion{}.}
+\label{tab:vs_atic}
+\begin{tabular}{lcc}
+\toprule
+\textbf{Aspecto} & \textbf{ATIC} & \textbf{\aletheion{}} \\
+\midrule
+Epist\^emico & Extr\'inseco & \textbf{Intr\'inseco} \\
+Granularidade & Por resposta & \textbf{Por token} \\
+Calibra\c{c}\~ao & Heur\'istica & \textbf{Via loss (BCE)} \\
+Gradiente & Zero & \textbf{End-to-end} \\
+Depend\^encia & LLM externo & \textbf{Auto-contido} \\
+Lat\^encia & Pipeline multi-step & \textbf{1 forward pass} \\
+Escalabilidade & CPU-bound & \textbf{GPU, 1M--640B} \\
+Continual Learning & Nenhum & \textbf{EWC + Replay} \\
+\midrule
+Governan\c{c}a & Completa & Pendente \\
+Agentes & 9+ registrados & Pendente \\
+Flexibilidade & Troca LLM base & Fixo \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Vis\~ao Futura: Integra\c{c}\~ao}
+
+O cen\'ario ideal \'e a integra\c{c}\~ao do \aletheion{} como LLM base do ATIC,
+combinando:
+
+\begin{itemize}
+    \item Epist\^emico intr\'inseco (\aletheion{}) com orquestra\c{c}\~ao (ATIC)
+    \item Tomografia por token com governan\c{c}a e agentes
+    \item Confian\c{c}a calibrada com \textit{policy binding}
+    \item Manifold aprendido com navega\c{c}\~ao MPC em tempo real
+\end{itemize}
+
+Nesta configura\c{c}\~ao, o \aletheion{} de 354M funcionaria como um
+avaliador epist\^emico das respostas de LLMs maiores, adicionando
+tomografia calibrada a qualquer modelo externo.
+
+\subsection{Trabalhos Futuros}
+
+\begin{enumerate}
+    \item \textbf{Avalia\c{c}\~ao emp\'irica}: Benchmarks de calibra\c{c}\~ao
+    (ECE, MCE, Brier score) contra baselines (temperature scaling,
+    ensemble, MC Dropout).
+
+    \item \textbf{Transfer learning}: Verificar se o manifold 5D
+    transfere entre dom\'inios (e.g., c\'odigo $\to$ texto cient\'ifico).
+
+    \item \textbf{Escala}: Treinar vers\~oes 1.3B e 7B para validar
+    que o sistema epist\^emico melhora com escala.
+
+    \item \textbf{Integra\c{c}\~ao ATIC}: Substituir o LLM externo do
+    ATIC pelo \aletheion{}, avaliando impacto na qualidade das respostas
+    e na precis\~ao da tomografia.
+
+    \item \textbf{Estudo de abl\c{c}\~ao}: Impacto individual de cada
+    loss component e sub-head na calibra\c{c}\~ao final.
+
+    \item \textbf{Efici\^encia do VI}: Comparar VI treinado
+    \textit{end-to-end} vs VI determin\'istico (ATIC) em preven\c{c}\~ao
+    de colapso.
+\end{enumerate}
+
+\subsection{C\'odigo e Reprodutibilidade}
+
+O c\'odigo-fonte completo, incluindo todos os m\'odulos, testes (261),
+configura\c{c}\~oes de escala e scripts de treinamento, est\'a dispon\'ivel
+no reposit\'orio:
+
+\begin{center}
+    \texttt{github.com/gnai-creator/aletheion-llm-v2}
+\end{center}
+
+O modelo de 354M par\^ametros pode ser treinado em uma \'unica
+RTX 4090 (24GB VRAM) em aproximadamente 8--10 dias com 7B tokens
+do FineWeb-Edu.

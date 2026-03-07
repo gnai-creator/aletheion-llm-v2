@@ -1,0 +1,81 @@
+% ============================================================
+% Secao 1: Introducao
+% ============================================================
+
+\section{Introdu\c{c}\~ao}
+\label{sec:introducao}
+
+Modelos de linguagem de grande escala (LLMs) alcan\c{c}aram capacidades
+not\'aveis em gera\c{c}\~ao de texto, racioc\'inio e seguimento de instru\c{c}\~oes
+\cite{brown2020gpt3, touvron2023llama}. Contudo, estes modelos sofrem de uma
+limita\c{c}\~ao fundamental: \textbf{n\~ao sabem quando n\~ao sabem}.
+
+A sa\'ida de um LLM convencional \'e um vetor de logits sobre o vocabul\'ario,
+seguido de uma opera\c{c}\~ao softmax que produz probabilidades. Embora a entropia
+desta distribui\c{c}\~ao possa servir como proxy grosseiro de incerteza, ela
+confunde incerteza aleat\'oria (inerente aos dados) com incerteza epist\^emica
+(devida \`a falta de conhecimento do modelo). Al\'em disso, modelos treinados com
+\textit{cross-entropy} tendem a ser \textbf{mal calibrados}: a confian\c{c}a
+reportada n\~ao corresponde \`a acur\'acia real \cite{guo2017calibration}.
+
+Trabalhos anteriores abordam este problema de forma extr\'inseca:
+ensembles \cite{lakshminarayanan2017simple}, Monte Carlo Dropout
+\cite{gal2016dropout}, ou sistemas de orquestra\c{c}\~ao que analisam respostas
+ap\'os a gera\c{c}\~ao. Estas abordagens adicionam lat\^encia, custos computacionais
+e n\~ao permitem que o sinal epist\^emico influencie o pr\'oprio processo de
+gera\c{c}\~ao.
+
+\subsection{Contribui\c{c}\~oes}
+
+Neste trabalho, propomos o \aletheion{}, um LLM \textit{decoder-only} que integra
+o sistema epist\^emico \textbf{intrinsecamente} na arquitetura neural:
+
+\begin{enumerate}
+    \item \textbf{Tomografia Epist\^emica por Token}: Cada token gera, al\'em de
+    logits, um conjunto de 30+ campos epist\^emicos organizados em 3 tiers,
+    incluindo incerteza decomposada ($q_1$, $q_2$), confian\c{c}a calibrada,
+    coordenadas em manifold 5D e estado cognitivo.
+
+    \item \textbf{Manifold Riemanniano Diferenci\'avel (DRM)}: Cada token \'e
+    mapeado para um espa\c{c}o 5D com geometria Riemanniana aprendida, onde
+    dist\^ancias geod\'esicas definem a confian\c{c}a epist\^emica via
+    \textit{Metric-Aware Distance} (MAD).
+
+    \item \textbf{Vetor de Intencionalidade (VI)}: Um sistema de monitoramento
+    e corre\c{c}\~ao da sa\'ude do manifold, baseado em 4 componentes ($\phi$)
+    que detectam colapso dimensional e aplicam corre\c{c}\~oes determinisicas.
+
+    \item \textbf{Navegador MPC}: Controle preditivo no manifold com
+    \textit{beam search} (K=4, D=3) que planeja trajet\'orias \'otimas sobre
+    12 a\c{c}\~oes de interven\c{c}\~ao.
+
+    \item \textbf{9 M\'odulos de Extens\~ao}: EidosDecay, Filosofia3 (conflito
+    $\phi$-$\psi$), SelfModel, Grounding, PlasticityGate, MPL/Frontier,
+    MOPsi, CausalState e Metacognitive --- totalizando ~364K par\^ametros
+    (<0.3\% do modelo).
+
+    \item \textbf{Loss Composta com Annealing}: 13 componentes de perda com
+    \textit{warmup} progressivo que estabiliza o treinamento.
+
+    \item \textbf{Continual Learning}: EWC com acumula\c{c}\~ao online de Fisher
+    e \textit{Experience Replay} com reservoir sampling integrados no
+    \textit{trainer}.
+\end{enumerate}
+
+\subsection{Motiva\c{c}\~ao Filos\'ofica}
+
+O nome \textit{Aletheion} deriva do grego $\alpha\lambda\acute{\eta}\theta\epsilon\iota\alpha$
+(\textit{al\=etheia}), que significa ``desvelamento'' ou ``verdade'' no sentido
+heideggeriano. A proposta \'e que o modelo n\~ao apenas gere texto, mas
+\textbf{desvele} o seu pr\'oprio estado epist\^emico --- tornando expl\'icito
+o que sabe, o que n\~ao sabe, e o qu\~ao confi\'avel \'e cada token.
+
+\subsection{Organiza\c{c}\~ao do Paper}
+
+A \Cref{sec:arquitetura} descreve a arquitetura geral do transformer.
+A \Cref{sec:epistemico} detalha o \texttt{EpistemicHead} e seus sub-heads.
+As se\c{c}\~oes \ref{sec:drm}--\ref{sec:mpc} aprofundam os componentes centrais
+(DRM, MAD, VI, MPC). A \Cref{sec:extensoes} cobre os 9 m\'odulos de extens\~ao.
+A \Cref{sec:loss} apresenta a loss composta. A \Cref{sec:continual} discute
+continual learning. A \Cref{sec:escalabilidade} aborda escalabilidade.
+A \Cref{sec:conclusao} conclui.

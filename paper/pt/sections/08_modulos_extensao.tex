@@ -1,0 +1,262 @@
+% ============================================================
+% Secao 8: Modulos de Extensao (9 modulos)
+% ============================================================
+
+\section{M\'odulos de Extens\~ao}
+\label{sec:extensoes}
+
+Al\'em do n\'ucleo epist\^emico (DRM, MAD, VI, MPC), o \aletheion{} inclui
+9 m\'odulos de extens\~ao organizados em 3 tiers. Cada m\'odulo \'e um
+\texttt{nn.Module} trein\'avel com flag \texttt{enable\_*} para
+ativa\c{c}\~ao condicional.
+
+% -------------------------------------------------------
+\subsection{Tier 1: Alto Impacto, Baixo Custo (~1.7K params)}
+% -------------------------------------------------------
+
+\subsubsection{EidosDecay}
+\label{sec:eidos}
+
+O \textit{EidosDecay} monitora e corrige o balanceamento dos 5 eixos do manifold.
+Eixos sobre-representados sofrem \textit{decay} (atenua\c{c}\~ao) e eixos
+sub-representados recebem \textit{reinforce} (refor\c{c}o):
+
+\begin{align}
+    r_k &= \frac{\text{std}(c_k)}{\max_j \text{std}(c_j) + \epsilon} \label{eq:eidos_ratio} \\
+    w_k^{\text{decay}} &= \sigma\big(\text{MLP}_{\text{decay}}(\bm{r})\big)_k \cdot \alpha_{\text{base}} \\
+    w_k^{\text{reinforce}} &= \sigma\big(\text{MLP}_{\text{reinforce}}(\bm{r})\big)_k \cdot \beta_{\text{base}}
+\end{align}
+
+com $\alpha_{\text{base}} = 0.95$ e $\beta_{\text{base}} = 1.05$. O resultado
+\'e um vetor \texttt{axis\_balance} $\in \R^{B \times T \times 5}$ que indica
+o peso relativo de cada eixo.
+
+\paragraph{Dream Mode.} Durante fases de ``sonho'' (treinamento especial),
+a intensidade \'e amplificada por $\delta_{\text{dream}} = 3.0$:
+
+\begin{equation}
+    w_k^{\text{reinforce}} = \sigma(\cdot) \cdot \beta_{\text{base}} \cdot \delta_{\text{dream}}
+\end{equation}
+
+\paragraph{Par\^ametros:} ~368 (2 MLPs $5 \to 16 \to 5$ + 1 proje\c{c}\~ao $5 \to 1$).
+
+\subsubsection{Filosofia3: Conflito $\phi$-$\psi$}
+\label{sec:filosofia3}
+
+O m\'odulo \textit{Filosofia3} detecta e quantifica conflitos entre
+o estado epist\^emico ($\phi$) e o estado pragm\'atico ($\psi$) do modelo.
+
+O conflito \'e medido em duas vias:
+
+\paragraph{Via Anal\'itica.}
+Computa deltas entre tokens adjacentes e calcula similaridade cosseno:
+
+\begin{align}
+    \Delta\phi_t &= \phi_{t} - \phi_{t-1} \in \R^4 \\
+    \Delta\psi_t &= (\kappa_t - \kappa_{t-1}) \cdot \bm{p} \in \R^4
+\end{align}
+
+onde $\bm{p} = (0.1, 0.1, 0.1, 0.7)$ \'e a proje\c{c}\~ao de qualidade.
+O conflito anal\'itico \'e:
+
+\begin{equation}
+    \gamma_{\text{anal}} = \frac{1}{2}\left(1 - \frac{\Delta\phi \cdot \Delta\psi}{\|\Delta\phi\| \|\Delta\psi\| + \epsilon}\right) \in [0, 1]
+\end{equation}
+
+\paragraph{Via Aprendida.}
+Uma MLP processa a concatena\c{c}\~ao $[\Delta\phi; \Delta\psi] \in \R^8$:
+
+\begin{equation}
+    \gamma_{\text{learn}} = \sigma\big(\text{MLP}_{8 \to 16 \to 1}([\Delta\phi; \Delta\psi])\big)
+\end{equation}
+
+\paragraph{Blend Final.}
+\begin{equation}
+    \gamma = 0.7 \cdot \gamma_{\text{anal}} + 0.3 \cdot \gamma_{\text{learn}}
+\end{equation}
+
+\paragraph{Modos de Opera\c{c}\~ao.}
+Uma segunda MLP classifica o modo em 4 categorias via softmax:
+
+\begin{equation}
+    \bm{m} = \text{softmax}\big(\text{MLP}_{8 \to 16 \to 4}([\Delta\phi; \Delta\psi])\big)
+\end{equation}
+
+\begin{enumerate}
+    \item \textbf{ALIGNED} ($m_0$): $\phi$ e $\psi$ concordam
+    \item \textbf{CONFLICT\_TOLERATED} ($m_1$): Conflito aceit\'avel
+    \item \textbf{SIGNAL\_HUMAN} ($m_2$): Conflito requer sinaliza\c{c}\~ao
+    \item \textbf{RECOVERY} ($m_3$): Conflito cr\'itico
+\end{enumerate}
+
+\paragraph{Par\^ametros:} ~373 (2 MLPs + buffers).
+
+\subsubsection{SelfModel: Auto-Modelo Cognitivo}
+\label{sec:selfmodel}
+
+O \textit{SelfModel} mant\'em um modelo interno do estado cognitivo,
+produzindo 4 sinais:
+
+\begin{align}
+    \text{mood} &= \tanh\big(\text{MLP}_{3 \to 32 \to 1}(\bar{\kappa}, \phi, p_{\text{success}})\big) \in [-1, 1] \\
+    \text{curiosity} &= \sigma\big(\text{MLP}_{1 \to 8 \to 1}(q_2)\big) \in [0, 1] \\
+    \text{energy} &= \sigma(\bm{w}^\top \bh) \cdot \text{decay}(t) \in [0, 1] \\
+    \text{drives} &= \sigma\big(\text{MLP}_{3 \to 8 \to 3}(\text{curiosity}, \text{mood}, \text{energy})\big) \in [0, 1]^3
+\end{align}
+
+onde $\text{decay}(t) = 1 - 0.3 \cdot t / T$ simula a deple\c{c}\~ao de
+energia ao longo da sequ\^encia, e os 3 drives s\~ao: curiosidade,
+maestria e efici\^encia.
+
+\paragraph{Par\^ametros:} ~982 (dependente de $d_{\text{model}}$).
+
+% -------------------------------------------------------
+\subsection{Tier 2: M\'edio Impacto, M\'edio Custo (~112K params)}
+% -------------------------------------------------------
+
+\subsubsection{Grounding: Classifica\c{c}\~ao de Tarefas e Ambiguidade}
+\label{sec:grounding}
+
+\paragraph{TaskClassificationHead.}
+Classifica cada token em 9 tipos de tarefa via MLP:
+
+\begin{equation}
+    \bm{p}_{\text{task}} = \text{softmax}\big(\text{MLP}_{d \to 64 \to 9}(\bh)\big) \in \R^{B \times T \times 9}
+\end{equation}
+
+Os 9 tipos s\~ao: FACTUAL, ANALYTICAL, CREATIVE, CONVERSATIONAL,
+INSTRUCTIONAL, MATHEMATICAL, CODING, SUMMARIZATION, EPISTEMIC.
+
+\paragraph{AmbiguityHead.}
+Detecta ambiguidade em dois n\'iveis:
+
+\begin{align}
+    \text{level} &= \sigma\big(\text{MLP}_{d \to 32 \to 1}(\bh)\big) \in [0, 1] \\
+    \text{type} &= \text{softmax}\big(\text{MLP}_{d \to 32 \to 5}(\bh)\big) \in \R^5
+\end{align}
+
+Os 5 tipos de ambiguidade: PRONOUN, SCOPE, LEXICAL, STRUCTURAL, REFERENTIAL.
+
+\paragraph{Par\^ametros totais:} ~99.4K.
+
+\subsubsection{PlasticityGate}
+\label{sec:plasticity}
+
+Modela a plasticidade restante do modelo ao longo da sequ\^encia, simulando
+deple\c{c}\~ao de recursos cognitivos:
+
+\begin{align}
+    \text{cost}_t &= \text{Softplus}\big(\text{MLP}_{d \to 16 \to 1}(\bh_t)\big) \\
+    \text{budget}_t &= 1.0 - 0.3 \cdot \frac{t}{T} \quad \text{(or\c{c}amento posicional)} \\
+    \text{plast}_t &= \text{clamp}\Big(\text{budget}_t - \delta \cdot \sum_{k=1}^{t} \text{cost}_k, \ 0, \ 1\Big) \\
+    \text{gate}_t &= \sigma\big(\text{MLP}_{2 \to 8 \to 1}(\text{plast}_t, s_t)\big)
+\end{align}
+
+com $\delta = 0.02$ taxa de deple\c{c}\~ao.
+
+\paragraph{Par\^ametros:} ~12.3K.
+
+\subsubsection{MPL: Densidade e Fronteira}
+\label{sec:mpl}
+
+\paragraph{DensityTracker.}
+Mant\'em um grid hash esparso 5D que estima a densidade de visita\c{c}\~ao
+em cada regi\~ao do manifold. Opera com \texttt{@torch.no\_grad}:
+
+\begin{equation}
+    \rho(\bm{c}) = \frac{1}{N} \sum_{i=1}^{N} K_h(\bm{c} - \bm{c}_i)
+\end{equation}
+
+com kernel Gaussiano $K_h$ e bandwidth $h = 0.15$.
+
+\paragraph{FrontierHead.}
+Identifica regi\~oes inexploradas do manifold:
+
+\begin{equation}
+    f_{\text{frontier}} = \sigma\big(\text{MLP}_{6 \to 16 \to 1}([\bm{c}; \rho(\bm{c})])\big) \cdot (1 - \rho(\bm{c}))
+\end{equation}
+
+\paragraph{Par\^ametros:} ~129 (FrontierHead) + 0 (DensityTracker).
+
+% -------------------------------------------------------
+\subsection{Tier 3: Componentes Avan\c{c}ados (~250K params)}
+% -------------------------------------------------------
+
+\subsubsection{MOPsi: M\'odulo Orientador de $\psi$}
+\label{sec:mopsi}
+
+Modela o estado ``humano'' 5D e medeia o conflito $\phi$-$\psi$:
+
+\begin{align}
+    \bpsi &= \sigma\big(\text{MLP}_{d \to 32 \to 5}(\bh)\big) \in [0, 1]^5 \\
+    \psi_{\text{score}} &= \sigma\big(\text{MLP}_{10 \to 32 \to 1}([\bpsi; \bm{c}])\big) \in [0, 1]
+\end{align}
+
+O \texttt{PhiPsiMediator} resolve conflitos:
+
+\begin{equation}
+    \text{mediation} = \sigma\big(\text{MLP}_{3 \to 8 \to 1}(\phi, \psi_{\text{score}}, \gamma)\big)
+\end{equation}
+
+\paragraph{Par\^ametros:} ~25.3K + ~41.
+
+\subsubsection{CausalState: Condicionamento Causal}
+\label{sec:causal}
+
+Permite condicionar a gera\c{c}\~ao em um vetor de estado externo
+$\bm{z} \in \R^4$:
+
+\begin{equation}
+    \bh' = \bh + g \cdot \text{MLP}_{4 \to 32 \to d}(\bm{z})
+\end{equation}
+
+onde $g = \sigma(\bm{w}^\top [\bh; \text{MLP}(\bm{z})])$ \'e um gate
+aprendido. O \texttt{PolicyBinding} mapeia estados para par\^ametros
+de gera\c{c}\~ao (temperatura, \textit{max\_tokens}).
+
+\paragraph{Par\^ametros:} ~25.5K (StateConditioning) + 0 (PolicyBinding).
+
+\subsubsection{Metacognitive: Avalia\c{c}\~ao Contrastiva}
+\label{sec:metacognitive}
+
+O \textit{ContrastiveHead} projeta os \textit{hidden states} em duas
+``vis\~oes'' e mede diverg\^encia:
+
+\begin{align}
+    \bm{v}_a &= \text{MLP}_{d \to 128 \to d/2}(\bh) \\
+    \bm{v}_b &= \text{MLP}_{d \to 128 \to d/2}(\bh) \\
+    \text{div} &= \sigma\big(\text{MLP}_{d \to 32 \to 1}([\bm{v}_a; \bm{v}_b])\big) \in [0, 1]
+\end{align}
+
+Alta diverg\^encia indica que o modelo tem ``duas opini\~oes'' sobre o
+token, sinalizando incerteza metacognitiva.
+
+\paragraph{Par\^ametros:} ~200K.
+
+\subsection{Overhead Total}
+
+\begin{table}[H]
+\centering
+\caption{Par\^ametros dos m\'odulos de extens\~ao.}
+\label{tab:overhead}
+\begin{tabular}{lrl}
+\toprule
+\textbf{M\'odulo} & \textbf{Params} & \textbf{\% do Modelo} \\
+\midrule
+EidosDecay & 368 & <0.001\% \\
+Filosofia3 & 373 & <0.001\% \\
+SelfModel & 982 & <0.001\% \\
+Grounding (2 heads) & 99.4K & 0.028\% \\
+PlasticityGate & 12.3K & 0.003\% \\
+MPL (Frontier) & 129 & <0.001\% \\
+MOPsi & 25.3K & 0.007\% \\
+CausalState & 25.5K & 0.007\% \\
+Metacognitive & 200K & 0.056\% \\
+\midrule
+\textbf{Total} & \textbf{~364K} & \textbf{<0.3\%} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Todos os m\'odulos s\~ao opcionais e podem ser ativados/desativados via
+configura\c{c}\~ao sem alterar a arquitetura base do transformer.

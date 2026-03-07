@@ -1,0 +1,130 @@
+% ============================================================
+% AletheionV2: LLM Decoder-Only com Sistema Epistemico Intrinseco
+% Paper completo - Portugues (BR)
+% ============================================================
+
+\documentclass[11pt,a4paper]{article}
+
+% --- Pacotes ---
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[brazilian]{babel}
+\usepackage{amsmath,amssymb,amsthm}
+\usepackage{mathtools}
+\usepackage{bm}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{multirow}
+\usepackage{array}
+\usepackage{tabularx}
+\usepackage{float}
+\usepackage{subcaption}
+\usepackage[dvipsnames]{xcolor}
+\usepackage{algorithm}
+\usepackage{algorithmic}
+\usepackage{listings}
+\usepackage[colorlinks=true,linkcolor=blue,citecolor=blue,urlcolor=blue]{hyperref}
+\usepackage{cleveref}
+\usepackage{geometry}
+\geometry{margin=2.5cm}
+
+% --- Teoremas ---
+\newtheorem{theorem}{Teorema}[section]
+\newtheorem{proposition}[theorem]{Proposicao}
+\newtheorem{lemma}[theorem]{Lema}
+\newtheorem{corollary}[theorem]{Corolario}
+\newtheorem{definition}[theorem]{Definicao}
+\newtheorem{remark}[theorem]{Observacao}
+
+% --- Comandos customizados ---
+\newcommand{\R}{\mathbb{R}}
+\newcommand{\E}{\mathbb{E}}
+\newcommand{\calL}{\mathcal{L}}
+\newcommand{\calM}{\mathcal{M}}
+\newcommand{\calN}{\mathcal{N}}
+\newcommand{\calG}{\mathcal{G}}
+\newcommand{\bx}{\bm{x}}
+\newcommand{\bh}{\bm{h}}
+\newcommand{\bz}{\bm{z}}
+\newcommand{\bG}{\bm{G}}
+\newcommand{\bphi}{\bm{\phi}}
+\newcommand{\bpsi}{\bm{\psi}}
+\newcommand{\drm}{\text{DRM}}
+\newcommand{\mad}{\text{MAD}}
+\newcommand{\mpc}{\text{MPC}}
+\newcommand{\vi}{\text{VI}}
+\newcommand{\aletheion}{\textsc{AletheionV2}}
+
+% --- Listings ---
+\lstset{
+    language=Python,
+    basicstyle=\ttfamily\small,
+    keywordstyle=\color{blue},
+    commentstyle=\color{gray},
+    stringstyle=\color{red},
+    frame=single,
+    breaklines=true,
+    numbers=left,
+    numberstyle=\tiny\color{gray},
+}
+
+% --- Titulo ---
+\title{
+    \textbf{AletheionV2: Um LLM Decoder-Only com\\
+    Sistema Epist\^emico Intr\'inseco em\\
+    Manifold Riemanniano 5D}
+}
+
+\author{
+    Felipe Maya Muniz \\
+    \textit{GNAI Creator} \\
+    \texttt{gnai-creator@github}
+}
+
+\date{Marco 2026}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+Apresentamos o \aletheion{}, um modelo de linguagem \textit{decoder-only} que integra
+um sistema epist\^emico completo como m\'odulos neurais trein\'aveis (\texttt{nn.Module}).
+Diferente de LLMs tradicionais que produzem apenas logits sobre o vocabul\'ario,
+cada token gerado pelo \aletheion{} produz uma \textbf{tomografia epist\^emica} com mais
+de 30 campos, incluindo incerteza aleat\'oria ($q_1$) e epist\^emica ($q_2$),
+confian\c{c}a calibrada via dist\^ancia geodesica em manifold Riemanniano 5D,
+vetor de intencionalidade, temperatura adaptativa e estado cognitivo.
+O sistema \'e composto por 11 sub-\textit{heads} organizados em 3 tiers
+(~364K par\^ametros, <0.3\% do modelo), treinados \textit{end-to-end} com
+13 fun\c{c}\~oes de perda e \textit{annealing} progressivo. Implementamos
+\textit{Continual Learning} via EWC (\textit{Elastic Weight Consolidation}) e
+\textit{Experience Replay}, com configura\c{c}\~oes de escala de 1M a 640B par\^ametros.
+O modelo de 354M par\^ametros treina em uma \'unica RTX 4090 (24GB VRAM).
+\end{abstract}
+
+\textbf{Palavras-chave:} LLM, epistemologia computacional, manifold Riemanniano,
+incerteza calibrada, continual learning, decoder-only transformer.
+
+\tableofcontents
+\newpage
+
+% --- Secoes ---
+\input{sections/01_introducao}
+\input{sections/02_arquitetura}
+\input{sections/03_sistema_epistemico}
+\input{sections/04_manifold_drm}
+\input{sections/05_mad_confianca}
+\input{sections/06_vetor_intencionalidade}
+\input{sections/07_mpc_navegador}
+\input{sections/08_modulos_extensao}
+\input{sections/09_loss_composta}
+\input{sections/10_continual_learning}
+\input{sections/11_escalabilidade}
+\input{sections/12_conclusao}
+
+% --- Bibliografia ---
+\bibliographystyle{plain}
+\bibliography{references}
+
+\end{document}

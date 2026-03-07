@@ -1,0 +1,138 @@
+% ============================================================
+% Secao 4: Manifold Riemanniano Diferenciavel (DRM)
+% ============================================================
+
+\section{Manifold Riemanniano Diferenci\'avel (DRM)}
+\label{sec:drm}
+
+O \textit{Differentiable Riemannian Manifold} (DRM) \'e o substrato
+geom\'etrico sobre o qual opera o sistema epist\^emico. Cada token \'e
+mapeado para um ponto em um manifold Riemanniano 5D aprendido, onde
+dist\^ancias geod\'esicas codificam rela\c{c}\~oes epist\^emicas.
+
+\subsection{Embedding no Manifold}
+
+O mapeamento dos \textit{hidden states} para coordenadas 5D \'e feito por
+uma MLP com ativa\c{c}\~ao sigmoid na \'ultima camada:
+
+\begin{equation}
+    \bm{c} = \sigma\big(\bm{W}_3 \cdot \text{GELU}(\bm{W}_2 \cdot \text{GELU}(\bm{W}_1 \bh + \bm{b}_1) + \bm{b}_2) + \bm{b}_3\big) \in [0, 1]^5
+    \label{eq:manifold_emb}
+\end{equation}
+
+com $\bm{W}_1 \in \R^{32 \times d}$, $\bm{W}_2 \in \R^{16 \times 32}$,
+$\bm{W}_3 \in \R^{5 \times 16}$, totalizando ~50K par\^ametros.
+
+As 5 dimens\~oes capturam aspectos epist\^emicos distintos:
+
+\begin{table}[H]
+\centering
+\caption{Interpreta\c{c}\~ao das 5 dimens\~oes do manifold.}
+\label{tab:dims_5d}
+\begin{tabular}{cl}
+\toprule
+\textbf{Dim.} & \textbf{Interpreta\c{c}\~ao} \\
+\midrule
+$c_0$ & Certeza factual \\
+$c_1$ & Consist\^encia l\'ogica \\
+$c_2$ & Contexto / \textit{grounding} \\
+$c_3$ & Calibra\c{c}\~ao de confian\c{c}a \\
+$c_4$ & Profundidade epist\^emica \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Tensor M\'etrico}
+
+A geometria do manifold \'e definida por um tensor m\'etrico
+$\bG \in \R^{5 \times 5}$ que deve ser \textbf{sim\'etrico positivo-definido}
+(SPD). Constru\'imos $\bG$ a partir de uma matriz triangular inferior
+aprendida $\bm{L}$:
+
+\begin{equation}
+    \bG = \bm{L}\bm{L}^\top + \epsilon \bm{I}_5
+    \label{eq:metric_spd}
+\end{equation}
+
+onde $\bm{L}$ \'e parametrizado por $5 \times (5+1) / 2 = 15$ par\^ametros
+livres e $\epsilon = 10^{-6}$ garante estabilidade num\'erica. A
+decomposi\c{c}\~ao de Cholesky garante que $\bG$ \'e SPD por constru\c{c}\~ao.
+
+\begin{proposition}[Positividade do Tensor M\'etrico]
+Para qualquer $\bm{L} \in \R^{5 \times 5}$ triangular inferior com diagonal
+n\~ao-nula, $\bG = \bm{L}\bm{L}^\top + \epsilon \bm{I}$ \'e SPD.
+\end{proposition}
+
+\begin{proof}
+Para qualquer $\bm{v} \neq 0$:
+$\bm{v}^\top \bG \bm{v} = \bm{v}^\top \bm{L}\bm{L}^\top \bm{v} + \epsilon \|\bm{v}\|^2
+= \|\bm{L}^\top \bm{v}\|^2 + \epsilon \|\bm{v}\|^2 > 0$.
+\end{proof}
+
+\subsection{Dist\^ancia Geod\'esica}
+
+A dist\^ancia geod\'esica entre dois pontos $\bm{c}_i, \bm{c}_j$ no manifold \'e
+aproximada pela dist\^ancia de Mahalanobis induzida por $\bG$:
+
+\begin{equation}
+    d_{\bG}(\bm{c}_i, \bm{c}_j) = \sqrt{(\bm{c}_i - \bm{c}_j)^\top \bG\, (\bm{c}_i - \bm{c}_j)}
+    \label{eq:geodesic}
+\end{equation}
+
+Esta \'e uma aproxima\c{c}\~ao de primeira ordem da dist\^ancia geod\'esica
+verdadeira, v\'alida quando a curvatura \'e localmente uniforme. Para o caso
+geral, a geod\'esica exigiria integra\c{c}\~ao da equa\c{c}\~ao diferencial:
+
+\begin{equation}
+    \ddot{c}^\mu + \Gamma^\mu_{\alpha\beta} \dot{c}^\alpha \dot{c}^\beta = 0
+\end{equation}
+
+onde $\Gamma^\mu_{\alpha\beta}$ s\~ao os s\'imbolos de Christoffel.
+
+\subsection{Campo Direcional}
+
+O campo direcional $\bm{F} \in \R^5$ captura a dire\c{c}\~ao preferencial de
+evolu\c{c}\~ao no manifold, derivado da entropia dos padr\~oes de aten\c{c}\~ao:
+
+\begin{equation}
+    H_\ell = -\sum_t \bm{A}_{\ell,t} \log(\bm{A}_{\ell,t} + \epsilon)
+\end{equation}
+
+\begin{equation}
+    \bm{F} = \text{MLP}_F(\bar{H}) \in \R^5
+\end{equation}
+
+onde $\bar{H}$ \'e a entropia m\'edia sobre camadas e heads.
+
+\subsection{Curvatura de Ricci}
+
+A sa\'ude do manifold pode ser avaliada pela curvatura escalar de Ricci,
+computada a partir do tensor m\'etrico:
+
+\begin{equation}
+    R = g^{\mu\nu} R_{\mu\nu} = g^{\mu\nu} R^\lambda_{\ \mu\lambda\nu}
+\end{equation}
+
+Na implementa\c{c}\~ao, utilizamos uma aproxima\c{c}\~ao computacionalmente
+eficiente baseada no \textit{condition number} de $\bG$:
+
+\begin{equation}
+    \text{health}_{\text{metric}} = 1 - \frac{\log(\kappa(\bG))}{\log(\kappa_{\max})}
+\end{equation}
+
+onde $\kappa(\bG) = \lambda_{\max} / \lambda_{\min}$ \'e o n\'umero de
+condi\c{c}\~ao. Um manifold saud\'avel tem $\kappa(\bG) \approx 1$
+(geometria isotr\'opica).
+
+\subsection{Regulariza\c{c}\~ao do Tensor M\'etrico}
+
+Para evitar degenera\c{c}\~ao da geometria, adicionamos uma regulariza\c{c}\~ao
+no \textit{condition number}:
+
+\begin{equation}
+    \calL_{\text{metric}} = \big(\kappa(\bG) - 1\big)^2
+\end{equation}
+
+Isso for\c{c}a $\bG$ a permanecer pr\'oximo da identidade, evitando que
+certas dire\c{c}\~oes do manifold colapsem ou se inflacionem
+excessivamente.

@@ -1,0 +1,201 @@
+% ============================================================
+% Secao 10: Continual Learning
+% ============================================================
+
+\section{Continual Learning}
+\label{sec:continual}
+
+O \aletheion{} integra dois mecanismos complementares de
+\textit{Continual Learning} (CL) para preservar conhecimento ao longo
+de m\'ultiplas fases de treinamento: \textit{Elastic Weight Consolidation}
+(EWC) e \textit{Experience Replay}.
+
+\subsection{Motiva\c{c}\~ao}
+
+O \textit{catastrophic forgetting} \cite{mccloskey1989catastrophic} \'e
+o fen\^omeno em que redes neurais perdem conhecimento de tarefas
+anteriores ao treinar em novas tarefas. Em um LLM com sistema
+epist\^emico, isso \'e particularmente problem\'atico:
+
+\begin{itemize}
+    \item O manifold 5D pode ``esquecer'' sua geometria calibrada
+    \item O $\tau^2$ pode descalibrar-se
+    \item Os sub-heads epist\^emicos podem perder sinais aprendidos
+\end{itemize}
+
+\subsection{EWC: Elastic Weight Consolidation}
+\label{sec:ewc}
+
+EWC \cite{kirkpatrick2017ewc} protege par\^ametros importantes adicionando
+uma penalidade quadr\'atica ponderada pela \textit{Fisher Information Matrix}
+(FIM) diagonal.
+
+\subsubsection{Fisher Information Matrix}
+
+Ap\'os cada fase de treinamento, estimamos a FIM diagonal:
+
+\begin{equation}
+    F_i = \E\left[\left(\frac{\partial \calL}{\partial \theta_i}\right)^2\right]
+    \approx \frac{1}{N} \sum_{n=1}^{N} \left(\frac{\partial \calL(\bx^{(n)})}{\partial \theta_i}\right)^2
+    \label{eq:fisher}
+\end{equation}
+
+onde $N = 256$ amostras do dataset (configur\'avel via
+\texttt{ewc\_fisher\_samples}).
+
+$F_i$ mede a \textbf{import\^ancia} do par\^ametro $\theta_i$: valores altos
+indicam que o par\^ametro \'e cr\'itico para a tarefa atual.
+
+\subsubsection{Penalidade EWC}
+
+Na fase seguinte, a loss total inclui:
+
+\begin{equation}
+    \calL_{\text{EWC}} = \frac{\lambda_{\text{EWC}}}{2} \sum_{i} F_i \cdot (\theta_i - \theta_i^*)^2
+    \label{eq:ewc_loss}
+\end{equation}
+
+onde $\theta_i^*$ s\~ao os par\^ametros ap\'os a fase anterior e
+$\lambda_{\text{EWC}} = 100.0$ controla a rigidez.
+
+\subsubsection{EWC Online}
+
+Para m\'ultiplas fases, utilizamos EWC online
+\cite{schwarz2018progress} com acumula\c{c}\~ao exponencial:
+
+\begin{align}
+    \bar{F}_i^{(k)} &= \gamma \cdot \bar{F}_i^{(k-1)} + F_i^{(k)} \label{eq:ewc_online} \\
+    \theta_i^{*(k)} &= \theta_i^{(k)}
+\end{align}
+
+com $\gamma = 0.9$ (decay). Isso evita o crescimento linear de termos
+que ocorre no EWC multi-tarefa ingenuamente.
+
+\subsubsection{Integra\c{c}\~ao no Trainer}
+
+A \Cref{eq:ewc_loss} \'e adicionada {\`a} loss total ap\'os o c\'alculo da
+loss composta:
+
+\begin{equation}
+    \calL_{\text{final}} = \calL_{\text{total}} + \calL_{\text{EWC}}
+\end{equation}
+
+O m\'etodo \texttt{consolidate\_phase()} deve ser chamado ap\'os cada
+fase:
+
+\begin{lstlisting}[caption={Uso de EWC no treinamento.}]
+# Fase 1: Treinamento base
+trainer.train()
+trainer.consolidate_phase()  # Computa Fisher
+
+# Fase 2: Novo dataset (EWC protege fase 1)
+trainer.train_loader = new_loader
+trainer.train()
+trainer.consolidate_phase()  # Acumula Fisher (online)
+
+# Fase 3: Mais dados (EWC protege fases 1+2)
+trainer.train_loader = another_loader
+trainer.train()
+\end{lstlisting}
+
+\subsection{Experience Replay}
+\label{sec:replay}
+
+\textit{Experience Replay} complementa o EWC mantendo um buffer de
+amostras anteriores que s\~ao misturadas ao batch atual.
+
+\subsubsection{Reservoir Sampling}
+
+O buffer utiliza reservoir sampling de Vitter \cite{vitter1985reservoir}
+para manter uma amostra uniforme de tamanho fixo:
+
+\begin{algorithm}[H]
+\caption{Reservoir Sampling}
+\begin{algorithmic}[1]
+\REQUIRE Buffer $\calB$ de capacidade $M$, amostra $\bx_n$ (n-\'esima)
+\IF{$|\calB| < M$}
+    \STATE $\calB \leftarrow \calB \cup \{\bx_n\}$
+\ELSE
+    \STATE $j \sim \text{Uniform}(0, n)$
+    \IF{$j < M$}
+        \STATE $\calB[j] \leftarrow \bx_n$
+    \ENDIF
+\ENDIF
+\end{algorithmic}
+\end{algorithm}
+
+Isso garante que cada amostra vista at\'e o momento $n$ tem probabilidade
+$M/n$ de estar no buffer, sem necesitar armazenar todo o hist\'orico.
+
+\subsubsection{Mix Batch}
+
+Em cada step de treinamento, uma fra\c{c}\~ao $\rho = 0.1$ do batch
+\'e substitu\'ida por amostras do buffer:
+
+\begin{equation}
+    \tilde{\calB}_t = (1 - \rho) \cdot \calB_t^{\text{novo}} \cup \rho \cdot \text{sample}(\calB_{\text{replay}})
+\end{equation}
+
+\subsubsection{Armazenamento CPU}
+
+O buffer \'e mantido em mem\'oria CPU para n\~ao consumir VRAM:
+
+\begin{equation}
+    \text{mem}_{\text{buffer}} = M \cdot T \cdot 2 \text{ bytes} \approx 10000 \cdot 1024 \cdot 2 \approx 20 \text{ MB}
+\end{equation}
+
+Amostras s\~ao transferidas para GPU apenas quando selecionadas para o
+\textit{mix batch}.
+
+\subsection{Sinergia EWC + Replay}
+
+Os dois mecanismos s\~ao complementares:
+
+\begin{itemize}
+    \item \textbf{EWC} protege no \textit{espa\c{c}o de par\^ametros}:
+    impede que pesos importantes mudem
+    \item \textbf{Replay} protege no \textit{espa\c{c}o de dados}:
+    mant\'em exemplos do passado no treinamento
+\end{itemize}
+
+Juntos, reduzem o \textit{forgetting} mais do que qualquer um isoladamente
+\cite{chaudhry2019continual}.
+
+\subsection{Checkpoint com Estado CL}
+
+O estado de CL \'e salvo junto ao checkpoint do modelo:
+
+\begin{lstlisting}[caption={Conte\'udo do checkpoint.}]
+checkpoint = {
+    'model': model.state_dict(),
+    'optimizer': optimizer.state_dict(),
+    'scheduler': scheduler.state_dict(),
+    'global_step': step,
+    'ewc_state': ewc.state_dict_ewc(),   # Fisher + params ref
+    'replay_state': replay.state_dict(),  # Buffer + contadores
+}
+\end{lstlisting}
+
+Isso permite retomar treinamento com CL intacto.
+
+\subsection{Configura\c{c}\~ao}
+
+\begin{table}[H]
+\centering
+\caption{Par\^ametros de Continual Learning.}
+\label{tab:cl_config}
+\begin{tabular}{lrl}
+\toprule
+\textbf{Par\^ametro} & \textbf{Default} & \textbf{Descri\c{c}\~ao} \\
+\midrule
+\texttt{enable\_ewc} & true & Ativa EWC \\
+\texttt{ewc\_lambda} & 100.0 & Peso da penalidade EWC \\
+\texttt{ewc\_online} & true & Acumula\c{c}\~ao online de Fisher \\
+\texttt{ewc\_gamma} & 0.9 & Decay da Fisher acumulada \\
+\texttt{ewc\_fisher\_samples} & 256 & Amostras para estimar Fisher \\
+\texttt{enable\_replay} & true & Ativa Experience Replay \\
+\texttt{replay\_buffer\_size} & 10000 & Capacidade do buffer \\
+\texttt{replay\_mix\_ratio} & 0.1 & Fra\c{c}\~ao de replay no batch \\
+\bottomrule
+\end{tabular}
+\end{table}

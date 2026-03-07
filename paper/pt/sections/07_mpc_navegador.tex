@@ -1,0 +1,133 @@
+% ============================================================
+% Secao 7: MPC - Navegador do Manifold
+% ============================================================
+
+\section{Navegador MPC no Manifold}
+\label{sec:mpc}
+
+O \textit{Model Predictive Control} (MPC) estende o VI com planejamento
+de trajet\'oria no manifold, utilizando \textit{beam search} para encontrar
+sequ\^encias \'otimas de interven\c{c}\~oes.
+
+\subsection{Formula\c{c}\~ao do Problema}
+
+O navegador MPC opera sobre o estado do manifold $\bm{s}_t = (\bm{c}_t, \kappa_t, \phi_t)$
+e busca a sequ\^encia de a\c{c}\~oes $\bm{a}_{t:t+D}$ que minimiza um custo
+acumulado:
+
+\begin{equation}
+    \bm{a}^* = \arg\min_{\bm{a}_{t:t+D}} \sum_{k=0}^{D-1} C(\hat{\bm{s}}_{t+k}, a_{t+k})
+    \label{eq:mpc_objective}
+\end{equation}
+
+onde $D = 3$ \'e o horizonte de planejamento e $\hat{\bm{s}}$ s\~ao estados
+preditos pelo modelo de transi\c{c}\~ao.
+
+\subsection{Espa\c{c}o de A\c{c}\~oes}
+
+O navegador disp\~oe de 12 a\c{c}\~oes de interven\c{c}\~ao:
+
+\begin{table}[H]
+\centering
+\caption{A\c{c}\~oes de interven\c{c}\~ao do MPC.}
+\label{tab:mpc_actions}
+\begin{tabular}{clcc}
+\toprule
+\textbf{ID} & \textbf{A\c{c}\~ao} & \textbf{Custo} & \textbf{Efeito} \\
+\midrule
+0 & NOOP & 0.00 & Nenhum \\
+1--5 & INJECT\_DIM\_$k$ & 0.04--0.08 & Refor\c{c}a dimens\~ao $k$ \\
+6 & BOOST\_CONFIDENCE & 0.03 & Aumenta $\kappa$ \\
+7 & REDUCE\_CONFIDENCE & 0.05 & Reduz $\kappa$ \\
+8 & INCREASE\_DISPERSION & 0.06 & Aumenta dispers\~ao \\
+9 & DECREASE\_DISPERSION & 0.06 & Reduz dispers\~ao \\
+10 & BOOST\_ENTROPY & 0.07 & Diversifica campo \\
+11 & FULL\_RESET & 0.15--0.25 & Reset ao centroide \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Modelo de Transi\c{c}\~ao}
+
+O modelo de transi\c{c}\~ao prediz o pr\'oximo estado dado a a\c{c}\~ao:
+
+\begin{equation}
+    \hat{\bm{s}}_{t+1} = f_\theta(\bm{s}_t, a_t)
+\end{equation}
+
+implementado como uma MLP compacta:
+
+\begin{equation}
+    f_\theta(\bm{s}, a) = \bm{W}_2 \cdot \text{ReLU}\big(\bm{W}_1 [\bm{s}; \text{onehot}(a)] + \bm{b}_1\big) + \bm{b}_2
+\end{equation}
+
+com input $\text{dim}(\bm{s}) + 12$ e output $\text{dim}(\bm{s})$.
+
+\subsection{Fun\c{c}\~ao de Custo}
+
+O custo em cada step combina 4 termos:
+
+\begin{equation}
+    C(\bm{s}, a) = \underbrace{w_\phi (1 - \phi)}_{\text{sa\'ude}} +
+    \underbrace{w_\kappa |\kappa - \kappa^*|}_{\text{calibra\c{c}\~ao}} +
+    \underbrace{w_a \cdot c(a)}_{\text{custo da a\c{c}\~ao}} +
+    \underbrace{w_s \cdot \|\Delta a\|}_{\text{suavidade}}
+    \label{eq:mpc_cost}
+\end{equation}
+
+onde $\kappa^*$ \'e a confian\c{c}a alvo, $c(a)$ o custo intr\'inseco da
+a\c{c}\~ao (\Cref{tab:mpc_actions}), e $\|\Delta a\|$ penaliza mudan\c{c}as
+bruscas de a\c{c}\~ao (estabilidade).
+
+\subsection{Beam Search}
+
+O espa\c{c}o de busca $12^D = 1728$ trajet\'orias \'e explorado por
+\textit{beam search} com largura $K = 4$:
+
+\begin{algorithm}[H]
+\caption{MPC Beam Search}
+\label{alg:mpc_beam}
+\begin{algorithmic}[1]
+\REQUIRE Estado atual $\bm{s}_0$, modelo $f_\theta$, custo $C$
+\STATE $\text{beams} \leftarrow \{(\bm{s}_0, [], 0)\}$ \COMMENT{(estado, a\c{c}\~oes, custo)}
+\FOR{$d = 0$ \textbf{to} $D-1$}
+    \STATE $\text{candidates} \leftarrow \emptyset$
+    \FOR{$(\bm{s}, \bm{a}, c)$ \textbf{in} beams}
+        \FOR{$a \in \{0, \ldots, 11\}$}
+            \STATE $\hat{\bm{s}} \leftarrow f_\theta(\bm{s}, a)$
+            \STATE $\hat{c} \leftarrow c + C(\hat{\bm{s}}, a)$
+            \STATE $\text{candidates} \leftarrow \text{candidates} \cup \{(\hat{\bm{s}}, \bm{a} \cup \{a\}, \hat{c})\}$
+        \ENDFOR
+    \ENDFOR
+    \STATE $\text{beams} \leftarrow \text{top-}K(\text{candidates}, \text{by cost})$
+\ENDFOR
+\RETURN primeira a\c{c}\~ao do beam de menor custo
+\end{algorithmic}
+\end{algorithm}
+
+\subsection{Constraint $\phi$-Floor}
+
+O navegador opera em dois modos baseado no n\'ivel de $\phi$:
+
+\begin{equation}
+    \text{modo} = \begin{cases}
+        \text{MAINTENANCE} & \text{se } \phi \geq \phi_{\text{floor}} = 0.45 \\
+        \text{RECOVERY} & \text{se } \phi < \phi_{\text{floor}}
+    \end{cases}
+\end{equation}
+
+No modo MAINTENANCE, o custo de a\c{c}\~ao tem peso maior (minimiza
+interven\c{c}\~oes). No modo RECOVERY, o custo de sa\'ude domina (maximiza
+$\phi$ rapidamente).
+
+\subsection{Integra\c{c}\~ao com VI}
+
+O MPC opera sobre o VI, n\~ao em substitui\c{c}\~ao. O resultado do
+\textit{beam search} gera um \textit{hint} de navega\c{c}\~ao que \'e
+combinado com a corre\c{c}\~ao do VI via blend ponderado:
+
+\begin{equation}
+    \bm{v}_{\text{final}} = (1 - \lambda_{\text{nav}}) \bm{v}_{\text{VI}} + \lambda_{\text{nav}} \bm{v}_{\text{MPC}}
+\end{equation}
+
+com $\lambda_{\text{nav}} = 0.3$.
