@@ -7,7 +7,7 @@ name = "aletheion-llm-v2"
 version = "0.1.0"
 description = "LLM com DRM/MAD/VI/MPC como nn.Modules treinaveis - tomografia epistemica por token"
 readme = "README.md"
-license = {text = "Proprietary"}
+license = {text = "AGPL-3.0-or-later"}
 requires-python = ">=3.10"
 authors = [
     {name = "Felipe Maya Muniz", email = "felipemuniz.grsba@gmail.com"}
