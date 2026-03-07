@@ -49,7 +49,7 @@ src/aletheion_v2/
 |   +-- epistemic_head.py        # EpistemicHead (orquestra todos os sub-heads)
 |   +-- gates.py                 # Q1Gate, Q2Gate, AdaptiveTemperature
 |
-+-- drm/                         # Differentiable Riemannian Manifold
++-- drm/                         # Directional Relational Manifold
 |   +-- manifold_embedding.py    # Coords 5D [B,T,5] via MLP
 |   +-- metric_tensor.py         # Tensor metrico SPD G [5,5]
 |   +-- directional_field.py     # Campo direcional (entropia atencao)
