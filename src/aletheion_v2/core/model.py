@@ -99,12 +99,16 @@ class AletheionV2Model(nn.Module):
         self,
         input_ids: torch.Tensor,
         return_tomography: bool = True,
+        state_vector: Optional[torch.Tensor] = None,
+        dream_mode: bool = False,
     ) -> ModelOutput:
         """Forward pass completo.
 
         Args:
             input_ids: [B, T] token ids
             return_tomography: se True, computa EpistemicTomography
+            state_vector: [B, 4] estado causal opcional (CausalState)
+            dream_mode: se True, amplifica eidos decay
 
         Returns:
             ModelOutput com logits, tomography, hidden_states, attention_patterns
@@ -139,7 +143,11 @@ class AletheionV2Model(nn.Module):
         if return_tomography and all_attn_weights:
             attention_patterns = torch.stack(all_attn_weights, dim=1)
             # [B, n_layers, n_heads, T, T]
-            tomography = self.epistemic_head(hidden_states, attention_patterns)
+            tomography = self.epistemic_head(
+                hidden_states, attention_patterns,
+                state_vector=state_vector,
+                dream_mode=dream_mode,
+            )
 
         return ModelOutput(
             logits=logits,

@@ -5,12 +5,15 @@ Uso:
     # Single GPU
     python scripts/train_distributed.py --config configs/scaling/125m.yaml
 
+    # Single GPU com dados especificos
+    python scripts/train_distributed.py --config configs/scaling/350m_rtx4090.yaml --data-dir data/125m
+
     # Multi-GPU (4 GPUs)
     torchrun --nproc_per_node=4 scripts/train_distributed.py --config configs/scaling/7b.yaml
 
     # Multi-node (2 nodes x 8 GPUs)
-    torchrun --nnodes=2 --nproc_per_node=8 --node_rank=0 \\
-        --master_addr=<IP> --master_port=29500 \\
+    torchrun --nnodes=2 --nproc_per_node=8 --node_rank=0 \
+        --master_addr=<IP> --master_port=29500 \
         scripts/train_distributed.py --config configs/scaling/70b.yaml
 
     # Resume de checkpoint
@@ -18,6 +21,7 @@ Uso:
 """
 
 import sys
+import json
 import argparse
 from pathlib import Path
 
@@ -29,6 +33,26 @@ from aletheion_v2.core.model import AletheionV2Model
 from aletheion_v2.training.trainer_distributed import DistributedTrainer
 from aletheion_v2.training.data_pipeline import create_dataloader_from_config
 from aletheion_v2.training.distributed import setup_distributed
+
+
+def _detect_vocab_size(data_dir: str) -> int:
+    """Detecta vocab_size do metadata dos dados.
+
+    Le metadata.json no diretorio de dados para obter o vocab_size
+    usado na tokenizacao. Evita mismatch entre modelo e dados.
+
+    Args:
+        data_dir: Diretorio de dados
+
+    Returns:
+        vocab_size ou 0 se nao encontrado
+    """
+    meta_path = Path(data_dir) / "metadata.json"
+    if meta_path.exists():
+        with open(meta_path) as f:
+            meta = json.load(f)
+        return meta.get("vocab_size", 0)
+    return 0
 
 
 def main():
@@ -56,6 +80,13 @@ def main():
                 else:
                     setattr(config, key, field_type(val))
 
+    # Auto-deteccao de vocab_size dos dados
+    data_vocab = _detect_vocab_size(config.data_dir)
+    if data_vocab > 0 and data_vocab != config.vocab_size:
+        print(f"[WARN] vocab_size do config ({config.vocab_size}) difere dos "
+              f"dados ({data_vocab}). Ajustando para {data_vocab}.")
+        config.vocab_size = data_vocab
+
     # Setup distribuido (para pegar rank antes de criar dataloader)
     dist_info = setup_distributed(config)
     rank = dist_info["rank"]
@@ -72,6 +103,11 @@ def main():
         print(f"[CONFIG] total_tokens={config.total_tokens:,}")
         print(f"[CONFIG] batch={config.batch_size} x accum={config.gradient_accumulation_steps} "
               f"x world={world_size}")
+        if config.enable_ewc:
+            print(f"[CONFIG] EWC: lambda={config.ewc_lambda}, online={config.ewc_online}")
+        if config.enable_replay:
+            print(f"[CONFIG] Replay: buffer={config.replay_buffer_size}, "
+                  f"mix={config.replay_mix_ratio}")
 
     # Cria modelo
     model = AletheionV2Model(config)
@@ -79,6 +115,12 @@ def main():
     if is_main:
         total_params = sum(p.numel() for p in model.parameters())
         print(f"[MODEL] Parametros reais: {total_params:,}")
+
+        # Estimativa de memoria para GPU
+        param_bytes = total_params * 2  # bf16
+        optim_bytes = total_params * 12  # AdamW fp32 states
+        total_gb = (param_bytes + optim_bytes) / (1024 ** 3)
+        print(f"[MODEL] Memoria estimada (modelo+optimizer): {total_gb:.1f} GB")
 
     # Cria dataloaders
     train_loader = create_dataloader_from_config(
@@ -107,6 +149,10 @@ def main():
 
     # Treina
     history = trainer.train()
+
+    # Consolida fase para continual learning
+    if config.enable_ewc:
+        trainer.consolidate_phase()
 
     if is_main:
         print(f"\n[DONE] Treinamento completo.")

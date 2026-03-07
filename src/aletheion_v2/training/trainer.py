@@ -22,6 +22,8 @@ from aletheion_v2.config import AletheionV2Config
 from aletheion_v2.core.model import AletheionV2Model
 from aletheion_v2.loss.composite_loss import AletheionV2Loss
 from aletheion_v2.training.scheduler import WarmupCosineScheduler
+from aletheion_v2.training.ewc import EWCRegularizer
+from aletheion_v2.training.replay_buffer import ReplayBuffer
 
 
 class Trainer:
@@ -71,6 +73,23 @@ class Trainer:
             lr_max=config.learning_rate,
         )
 
+        # Continual Learning
+        self.ewc = None
+        if config.enable_ewc:
+            self.ewc = EWCRegularizer(
+                lambda_ewc=config.ewc_lambda,
+                online=config.ewc_online,
+                gamma=config.ewc_gamma,
+            )
+
+        self.replay_buffer = None
+        if config.enable_replay:
+            self.replay_buffer = ReplayBuffer(
+                buffer_size=config.replay_buffer_size,
+                mix_ratio=config.replay_mix_ratio,
+                device=device,
+            )
+
         # Estado
         self.global_step = 0
         self.best_eval_loss = float("inf")
@@ -89,6 +108,11 @@ class Trainer:
         n_batches = 0
 
         for batch in self.train_loader:
+            # Replay: armazena batch e mistura com buffer
+            if self.replay_buffer is not None:
+                self.replay_buffer.add(batch)
+                batch = self.replay_buffer.mix_batch(batch, self.device)
+
             input_ids = batch["input_ids"].to(self.device)
             labels = batch["labels"].to(self.device)
 
@@ -107,6 +131,12 @@ class Trainer:
                 step=self.global_step,
                 total_steps=self.total_steps,
             )
+
+            # EWC: adiciona penalidade ao total
+            if self.ewc is not None and self.ewc.has_fisher:
+                ewc_loss = self.ewc(self.model)
+                losses["ewc"] = ewc_loss
+                losses["total"] = losses["total"] + ewc_loss
 
             # Backward
             self.optimizer.zero_grad()
@@ -242,15 +272,39 @@ class Trainer:
             f"anneal={anneal_val:.2f} lr={lr:.2e}"
         )
 
+    def consolidate_phase(self) -> None:
+        """Consolida fase de treinamento para continual learning.
+
+        Computa Fisher Information Matrix para EWC e preserva
+        parametros de referencia. Chamar apos cada fase de treino.
+        """
+        if self.ewc is not None:
+            print("[CL] Computando Fisher Information Matrix...")
+            self.ewc.compute_fisher(
+                self.model,
+                self.train_loader,
+                num_samples=self.config.ewc_fisher_samples,
+                device=self.device,
+            )
+            stats = self.ewc.get_importance_stats()
+            avg = stats.get("fisher/avg_importance", 0)
+            print(f"[CL] Fisher computada (avg_importance={avg:.6f}, "
+                  f"phases={stats.get('fisher/num_phases', 0)})")
+
     def save_checkpoint(self, path: str) -> None:
         """Salva checkpoint."""
-        torch.save({
+        state = {
             "model_state_dict": self.model.state_dict(),
             "optimizer_state_dict": self.optimizer.state_dict(),
             "global_step": self.global_step,
             "best_eval_loss": self.best_eval_loss,
             "config": self.config,
-        }, path)
+        }
+        if self.ewc is not None:
+            state["ewc"] = self.ewc.state_dict_ewc()
+        if self.replay_buffer is not None:
+            state["replay_buffer"] = self.replay_buffer.state_dict()
+        torch.save(state, path)
         print(f"[SAVE] Checkpoint salvo em {path}")
 
     def load_checkpoint(self, path: str) -> None:
@@ -260,4 +314,8 @@ class Trainer:
         self.optimizer.load_state_dict(ckpt["optimizer_state_dict"])
         self.global_step = ckpt["global_step"]
         self.best_eval_loss = ckpt.get("best_eval_loss", float("inf"))
+        if self.ewc is not None and "ewc" in ckpt:
+            self.ewc.load_state_dict_ewc(ckpt["ewc"])
+        if self.replay_buffer is not None and "replay_buffer" in ckpt:
+            self.replay_buffer.load_state_dict(ckpt["replay_buffer"])
         print(f"[LOAD] Checkpoint carregado de {path} (step={self.global_step})")

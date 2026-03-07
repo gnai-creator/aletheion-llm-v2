@@ -163,7 +163,8 @@ class TestEpistemicHead:
         tomo = self.head(hidden, attn)
 
         d = tomo.to_dict()
-        assert len(d) == 11
+        # Core 11 + extensoes habilitadas por default
+        assert len(d) >= 11
         assert all(isinstance(v, torch.Tensor) for v in d.values())
 
     def test_get_metric_tensor(self):

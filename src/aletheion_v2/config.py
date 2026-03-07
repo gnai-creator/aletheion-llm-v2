@@ -59,12 +59,75 @@ class AletheionV2Config:
     mpc_phi_floor: float = 0.45
     mpc_intervention_cost_weight: float = 0.20
 
+    # --- Eidos Decay ---
+    enable_eidos: bool = True
+    eidos_base_decay: float = 0.95
+    eidos_base_reinforce: float = 1.05
+    eidos_dream_intensity: float = 3.0
+
+    # --- Filosofia3 ---
+    enable_filosofia3: bool = True
+    filosofia3_quality_projection: tuple = (0.1, 0.1, 0.1, 0.7)
+    filosofia3_analytical_weight: float = 0.7
+
+    # --- Consciousness ---
+    enable_consciousness: bool = True
+    consciousness_hidden_dim: int = 32
+    consciousness_energy_decay: float = 0.3
+
+    # --- Grounding ---
+    enable_grounding: bool = True
+    grounding_task_hidden_dim: int = 64
+    grounding_ambiguity_hidden_dim: int = 32
+
+    # --- Plasticity ---
+    enable_plasticity: bool = True
+    plasticity_initial_budget: float = 1.0
+    plasticity_depletion_rate: float = 0.02
+
+    # --- MPL ---
+    enable_mpl: bool = True
+    mpl_resolution: int = 10
+    mpl_bandwidth: float = 0.15
+    mpl_hidden_dim: int = 16
+
+    # --- MOPsi ---
+    enable_mopsi: bool = True
+    mopsi_hidden_dim: int = 32
+
+    # --- CausalState ---
+    enable_causal_state: bool = True
+    causal_state_hidden_dim: int = 32
+
+    # --- Metacognitive ---
+    enable_metacognitive: bool = True
+    metacognitive_hidden_dim: int = 128
+    metacognitive_proj_dim: int = 0  # 0 = d_model // 2
+
+    # --- Continual Learning ---
+    enable_ewc: bool = False  # Elastic Weight Consolidation
+    ewc_lambda: float = 100.0  # Peso da regularizacao EWC
+    ewc_online: bool = True  # Online EWC (acumula Fisher)
+    ewc_gamma: float = 0.9  # Decay para Fisher de fases anteriores
+    ewc_fisher_samples: int = 256  # Amostras para estimar Fisher
+    enable_replay: bool = False  # Experience Replay
+    replay_buffer_size: int = 10000  # Tamanho do buffer em amostras
+    replay_mix_ratio: float = 0.1  # Fracao do batch substituida por replay
+
     # --- Loss ---
     lambda_ce: float = 1.0
     lambda_varo: float = 0.1
     lambda_vi: float = 0.01
     lambda_mad: float = 0.05
     lambda_metric_reg: float = 0.001
+    lambda_eidos: float = 0.005
+    lambda_conflict: float = 0.005
+    lambda_consciousness: float = 0.003
+    lambda_grounding: float = 0.005
+    lambda_plasticity: float = 0.002
+    lambda_frontier: float = 0.002
+    lambda_mopsi: float = 0.003
+    lambda_contrastive: float = 0.003
     loss_warmup_fraction: float = 0.1  # Fracao do treino so com CE
     loss_ramp_fraction: float = 0.5  # Ramp linear ate aqui
 

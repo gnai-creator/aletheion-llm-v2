@@ -1,0 +1,62 @@
+# ~350M params - Otimizado para RTX 4090 (24GB VRAM)
+#
+# Estimativa de memoria:
+#   Modelo bf16: ~670MB
+#   Optimizer AdamW (fp32 states): ~4.0GB
+#   Activations (com grad checkpointing): ~2.0GB
+#   Gradients bf16: ~670MB
+#   Overhead PyTorch: ~1.5GB
+#   Total estimado: ~8.9GB (sobra ~15GB para batch maior)
+#
+# Throughput estimado: ~12K-18K tokens/s com torch.compile
+# Tempo para 7B tokens: ~4-5 dias
+
+# --- Modelo ---
+# vocab_size sera auto-detectado do metadata dos dados.
+# tiktoken GPT-2 = 50257, Llama sentencepiece = 32000
+vocab_size: 50257
+d_model: 1024
+n_heads: 16
+n_layers: 24
+d_ff: 4096
+max_seq_len: 1024
+dropout: 0.1
+
+# --- Training ---
+batch_size: 16
+learning_rate: 0.0003
+weight_decay: 0.01
+warmup_steps: 2000
+grad_clip: 1.0
+total_tokens: 7_000_000_000
+log_interval: 50
+eval_interval: 500
+save_interval: 1000
+
+# --- Performance RTX 4090 ---
+mixed_precision: bf16
+gradient_accumulation_steps: 4
+gradient_checkpointing: true
+compile_model: true
+
+# --- Data ---
+# data_dir sera passado via --data-dir no CLI
+data_dir: data/350m
+streaming: false
+num_workers: 4
+prefetch_factor: 2
+
+# --- Continual Learning ---
+enable_ewc: true
+ewc_lambda: 100.0
+ewc_online: true
+ewc_gamma: 0.9
+ewc_fisher_samples: 256
+enable_replay: true
+replay_buffer_size: 10000
+replay_mix_ratio: 0.1
+
+# --- Logging ---
+save_dir: checkpoints/350m_rtx4090
+wandb_project: aletheion-v2-350m
+save_total_limit: 3

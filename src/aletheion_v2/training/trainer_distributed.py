@@ -25,6 +25,8 @@ from aletheion_v2.config import AletheionV2Config
 from aletheion_v2.core.model import AletheionV2Model
 from aletheion_v2.loss.composite_loss import AletheionV2Loss
 from aletheion_v2.training.scheduler import WarmupCosineScheduler
+from aletheion_v2.training.ewc import EWCRegularizer
+from aletheion_v2.training.replay_buffer import ReplayBuffer
 from aletheion_v2.training.distributed import (
     setup_distributed,
     cleanup_distributed,
@@ -99,6 +101,22 @@ class DistributedTrainer:
         # Data
         self.train_loader = train_loader
         self.eval_loader = eval_loader
+
+        # Continual Learning
+        self.ewc = None
+        if config.enable_ewc:
+            self.ewc = EWCRegularizer(
+                lambda_ewc=config.ewc_lambda,
+                online=config.ewc_online,
+                gamma=config.ewc_gamma,
+            )
+
+        self.replay_buffer = None
+        if config.enable_replay:
+            self.replay_buffer = ReplayBuffer(
+                buffer_size=config.replay_buffer_size,
+                mix_ratio=config.replay_mix_ratio,
+            )
 
         # Estado
         self.global_step = 0
@@ -193,6 +211,12 @@ class DistributedTrainer:
             Dict com metricas do step
         """
         self.model.train()
+
+        # Replay: armazena e mistura batch
+        if self.replay_buffer is not None:
+            self.replay_buffer.add(batch)
+            batch = self.replay_buffer.mix_batch(batch, str(self.device))
+
         input_ids = batch["input_ids"].to(self.device)
         labels = batch["labels"].to(self.device)
 
@@ -215,6 +239,13 @@ class DistributedTrainer:
             )
 
             loss = losses["total"] / self.config.gradient_accumulation_steps
+
+            # EWC: adiciona penalidade
+            if self.ewc is not None and self.ewc.has_fisher:
+                ewc_loss = self.ewc(self.raw_model)
+                ewc_loss = ewc_loss / self.config.gradient_accumulation_steps
+                loss = loss + ewc_loss
+                losses["ewc"] = ewc_loss * self.config.gradient_accumulation_steps
 
         # Backward
         if self.grad_scaler is not None:
@@ -408,6 +439,27 @@ class DistributedTrainer:
         self.model.train()
         return avg
 
+    def consolidate_phase(self) -> None:
+        """Consolida fase de treinamento para continual learning.
+
+        Computa Fisher Information Matrix e preserva parametros.
+        """
+        if self.ewc is not None:
+            if self.is_main:
+                print("[CL] Computando Fisher Information Matrix...")
+            self.ewc.compute_fisher(
+                self.raw_model,
+                self.train_loader,
+                num_samples=self.config.ewc_fisher_samples,
+                device=str(self.device),
+                amp_context=self.amp_context,
+            )
+            if self.is_main:
+                stats = self.ewc.get_importance_stats()
+                avg = stats.get("fisher/avg_importance", 0)
+                print(f"[CL] Fisher computada (avg={avg:.6f}, "
+                      f"phases={stats.get('fisher/num_phases', 0)})")
+
     def save_checkpoint(self, name: str) -> None:
         """Salva checkpoint."""
         if not self.is_main:
@@ -425,6 +477,10 @@ class DistributedTrainer:
         }
         if self.grad_scaler is not None:
             state["grad_scaler"] = self.grad_scaler.state_dict()
+        if self.ewc is not None:
+            state["ewc"] = self.ewc.state_dict_ewc()
+        if self.replay_buffer is not None:
+            state["replay_buffer"] = self.replay_buffer.state_dict()
 
         torch.save(state, str(path))
         print(f"  [SAVE] {path}")
@@ -440,6 +496,10 @@ class DistributedTrainer:
         self.best_eval_loss = state.get("best_eval_loss", float("inf"))
         if self.grad_scaler and "grad_scaler" in state:
             self.grad_scaler.load_state_dict(state["grad_scaler"])
+        if self.ewc is not None and "ewc" in state:
+            self.ewc.load_state_dict_ewc(state["ewc"])
+        if self.replay_buffer is not None and "replay_buffer" in state:
+            self.replay_buffer.load_state_dict(state["replay_buffer"])
         if self.is_main:
             print(f"  [LOAD] {path} (step={self.global_step})")
 

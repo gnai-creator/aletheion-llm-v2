@@ -1,0 +1,20 @@
+# ~400B params - Ultra frontier scale
+# Params estimate: 12 * 96 * 18432^2 ≈ 391B
+vocab_size: 32000
+d_model: 18432
+n_heads: 144
+n_layers: 96
+d_ff: 73728
+max_seq_len: 4096
+dropout: 0.0
+batch_size: 1
+learning_rate: 0.00006
+warmup_steps: 2000
+total_tokens: 8_000_000_000_000
+mixed_precision: bf16
+gradient_accumulation_steps: 512
+gradient_checkpointing: true
+distributed: true
+fsdp: true
+fsdp_sharding: full
+compile_model: true
