@@ -1,0 +1,138 @@
+% ============================================================
+% Section 2: Architecture
+% ============================================================
+
+\section{Architecture}
+\label{sec:architecture}
+
+\aletheion{} follows the decoder-only transformer architecture
+\cite{vaswani2017attention, radford2019gpt2} with modifications to
+support the intrinsic epistemic system.
+
+\subsection{Overview}
+
+Given a token sequence $\bx = (x_1, \ldots, x_T)$, the model produces
+two simultaneous outputs:
+
+\begin{equation}
+    \text{\aletheion{}}(\bx) = \big(\underbrace{\bm{l} \in \R^{B \times T \times V}}_{\text{logits}},\
+    \underbrace{\mathcal{T} \in \R^{B \times T \times 30+}}_{\text{epistemic tomography}}\big)
+\end{equation}
+
+where $B$ is the batch size, $T$ the sequence length, $V$ the
+vocabulary size, and $\mathcal{T}$ is the epistemic tomography containing
+30+ fields per token.
+
+\subsection{Forward Pass Pipeline}
+
+The forward pass follows 4 stages:
+
+\subsubsection{Stage 1: Embeddings}
+
+\begin{equation}
+    \bh^{(0)} = \text{TokenEmb}(\bx) \in \R^{B \times T \times d}
+\end{equation}
+
+where $d = d_{\text{model}}$ is the model dimension. \aletheion{} uses
+\textbf{RoPE} (Rotary Position Embedding) \cite{su2021roformer}
+applied inside the attention, instead of additive positional embeddings:
+
+\begin{equation}
+    \text{RoPE}(\bm{q}, m) = \bm{q} \odot \cos(m\bm{\theta}) + \text{rotate}(\bm{q}) \odot \sin(m\bm{\theta})
+\end{equation}
+
+where $m$ is the position and $\bm{\theta}_i = 10000^{-2i/d_{\text{head}}}$.
+
+\subsubsection{Stage 2: Transformer Blocks ($\times N$)}
+
+Each block follows the pre-norm pattern (LLaMA/GPT-2 style):
+
+\begin{align}
+    \bm{a}^{(\ell)} &= \bh^{(\ell-1)} + \text{MultiHeadAttn}\big(\text{LN}(\bh^{(\ell-1)}), \text{RoPE}\big) \label{eq:attn} \\
+    \bh^{(\ell)} &= \bm{a}^{(\ell)} + \text{FeedForward}\big(\text{LN}(\bm{a}^{(\ell)})\big) \label{eq:ffn}
+\end{align}
+
+\paragraph{Multi-Head Attention with Causal Mask.}
+Causal attention ensures autoregression:
+
+\begin{equation}
+    \text{Attn}(\bm{Q}, \bm{K}, \bm{V}) = \text{softmax}\left(\frac{\bm{Q}\bm{K}^\top}{\sqrt{d_k}} + \bm{M}\right)\bm{V}
+\end{equation}
+
+where $\bm{M}_{ij} = -\infty$ if $j > i$ (lower triangular causal mask).
+
+\paragraph{FeedForward with SwiGLU.}
+The feedforward layer uses SwiGLU activation \cite{shazeer2020glu}:
+
+\begin{equation}
+    \text{FFN}(\bx) = (\text{Swish}(\bx \bm{W}_{\text{gate}}) \odot \bx \bm{W}_{\text{up}}) \bm{W}_{\text{down}}
+\end{equation}
+
+where $\bm{W}_{\text{gate}}, \bm{W}_{\text{up}} \in \R^{d \times d_{\text{ff}}}$ and
+$\bm{W}_{\text{down}} \in \R^{d_{\text{ff}} \times d}$.
+
+\subsubsection{Stage 3: Output Projection}
+
+\begin{equation}
+    \bm{l} = \text{LN}_{\text{final}}(\bh^{(N)}) \cdot \bm{W}_{\text{emb}}^\top
+\end{equation}
+
+The \texttt{lm\_head} is \textbf{tied} with the embedding matrix
+($\bm{W}_{\text{emb}} \in \R^{V \times d}$), reducing parameters and
+improving generalization \cite{press2017tying}.
+
+\subsubsection{Stage 4: EpistemicHead}
+
+Simultaneously with Stage 3, the hidden states
+$\bh^{(N)} \in \R^{B \times T \times d}$ and attention patterns
+are passed to the \texttt{EpistemicHead}:
+
+\begin{equation}
+    \mathcal{T} = \text{EpistemicHead}\big(\bh^{(N)}, \bm{A}^{(1:N)}\big)
+\end{equation}
+
+This is the central component that differentiates \aletheion{} from
+conventional LLMs and will be detailed in \Cref{sec:epistemic}.
+
+\subsection{Model Hyperparameters}
+
+\Cref{tab:config_base} presents the 354M parameter model configuration:
+
+\begin{table}[H]
+\centering
+\caption{354M model configuration (RTX 4090).}
+\label{tab:config_base}
+\begin{tabular}{lrl}
+\toprule
+\textbf{Parameter} & \textbf{Value} & \textbf{Description} \\
+\midrule
+$d_{\text{model}}$ & 1024 & Model dimension \\
+$n_{\text{heads}}$ & 16 & Number of attention heads \\
+$d_{\text{head}}$ & 64 & Dimension per head ($d/n_h$) \\
+$n_{\text{layers}}$ & 24 & Number of transformer blocks \\
+$d_{\text{ff}}$ & 4096 & Feedforward dimension \\
+$T_{\max}$ & 1024 & Maximum sequence length \\
+$|V|$ & 50,257 & Vocabulary size (tiktoken GPT-2) \\
+Dropout & 0.1 & Dropout rate \\
+\midrule
+\multicolumn{3}{l}{\textit{Training}} \\
+Batch size & 4 & Micro-batch per GPU \\
+Grad. accum. & 16 & Accumulation steps \\
+Effective batch & 64 & Sequences per update \\
+Mixed precision & bf16 & Mixed precision \\
+Learning rate & $3 \times 10^{-4}$ & With warmup cosine \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Weight Tying}
+
+\aletheion{} uses weight tying between the embedding layer and the
+\texttt{lm\_head}:
+
+\begin{equation}
+    \bm{W}_{\text{lm\_head}} = \bm{W}_{\text{emb}}^\top
+\end{equation}
+
+For a vocabulary of 50,257 tokens with $d = 1024$, this saves
+$\sim$51.5M parameters (14.5\% of the total).

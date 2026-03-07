@@ -1,0 +1,137 @@
+% ============================================================
+% Section 4: Differentiable Riemannian Manifold (DRM)
+% ============================================================
+
+\section{Differentiable Riemannian Manifold (DRM)}
+\label{sec:drm}
+
+The Differentiable Riemannian Manifold (DRM) is the geometric substrate
+on which the epistemic system operates. Each token is mapped to a point
+on a learned 5D Riemannian manifold, where geodesic distances encode
+epistemic relationships.
+
+\subsection{Manifold Embedding}
+
+The mapping from hidden states to 5D coordinates is performed by an
+MLP with sigmoid activation on the last layer:
+
+\begin{equation}
+    \bm{c} = \sigma\big(\bm{W}_3 \cdot \text{GELU}(\bm{W}_2 \cdot \text{GELU}(\bm{W}_1 \bh + \bm{b}_1) + \bm{b}_2) + \bm{b}_3\big) \in [0, 1]^5
+    \label{eq:manifold_emb}
+\end{equation}
+
+with $\bm{W}_1 \in \R^{32 \times d}$, $\bm{W}_2 \in \R^{16 \times 32}$,
+$\bm{W}_3 \in \R^{5 \times 16}$, totaling {\raise.17ex\hbox{$\scriptstyle\sim$}}50K parameters.
+
+The 5 dimensions capture distinct epistemic aspects:
+
+\begin{table}[H]
+\centering
+\caption{Interpretation of the 5 manifold dimensions.}
+\label{tab:dims_5d}
+\begin{tabular}{cl}
+\toprule
+\textbf{Dim.} & \textbf{Interpretation} \\
+\midrule
+$c_0$ & Factual certainty \\
+$c_1$ & Logical consistency \\
+$c_2$ & Context / grounding \\
+$c_3$ & Confidence calibration \\
+$c_4$ & Epistemic depth \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Metric Tensor}
+
+The manifold geometry is defined by a metric tensor
+$\bG \in \R^{5 \times 5}$ that must be \textbf{symmetric positive-definite}
+(SPD). We construct $\bG$ from a learned lower triangular matrix $\bm{L}$:
+
+\begin{equation}
+    \bG = \bm{L}\bm{L}^\top + \epsilon \bm{I}_5
+    \label{eq:metric_spd}
+\end{equation}
+
+where $\bm{L}$ is parametrized by $5 \times (5+1) / 2 = 15$ free
+parameters and $\epsilon = 10^{-6}$ ensures numerical stability. The
+Cholesky decomposition guarantees that $\bG$ is SPD by construction.
+
+\begin{proposition}[Metric Tensor Positivity]
+For any lower triangular $\bm{L} \in \R^{5 \times 5}$ with non-zero
+diagonal, $\bG = \bm{L}\bm{L}^\top + \epsilon \bm{I}$ is SPD.
+\end{proposition}
+
+\begin{proof}
+For any $\bm{v} \neq 0$:
+$\bm{v}^\top \bG \bm{v} = \bm{v}^\top \bm{L}\bm{L}^\top \bm{v} + \epsilon \|\bm{v}\|^2
+= \|\bm{L}^\top \bm{v}\|^2 + \epsilon \|\bm{v}\|^2 > 0$.
+\end{proof}
+
+\subsection{Geodesic Distance}
+
+The geodesic distance between two points $\bm{c}_i, \bm{c}_j$ on the
+manifold is approximated by the Mahalanobis distance induced by $\bG$:
+
+\begin{equation}
+    d_{\bG}(\bm{c}_i, \bm{c}_j) = \sqrt{(\bm{c}_i - \bm{c}_j)^\top \bG\, (\bm{c}_i - \bm{c}_j)}
+    \label{eq:geodesic}
+\end{equation}
+
+This is a first-order approximation of the true geodesic distance, valid
+when the curvature is locally uniform. In the general case, the geodesic
+would require integrating the differential equation:
+
+\begin{equation}
+    \ddot{c}^\mu + \Gamma^\mu_{\alpha\beta} \dot{c}^\alpha \dot{c}^\beta = 0
+\end{equation}
+
+where $\Gamma^\mu_{\alpha\beta}$ are the Christoffel symbols.
+
+\subsection{Directional Field}
+
+The directional field $\bm{F} \in \R^5$ captures the preferred direction
+of evolution on the manifold, derived from the entropy of attention
+patterns:
+
+\begin{equation}
+    H_\ell = -\sum_t \bm{A}_{\ell,t} \log(\bm{A}_{\ell,t} + \epsilon)
+\end{equation}
+
+\begin{equation}
+    \bm{F} = \text{MLP}_F(\bar{H}) \in \R^5
+\end{equation}
+
+where $\bar{H}$ is the mean entropy across layers and heads.
+
+\subsection{Ricci Curvature}
+
+Manifold health can be assessed by the Ricci scalar curvature, computed
+from the metric tensor:
+
+\begin{equation}
+    R = g^{\mu\nu} R_{\mu\nu} = g^{\mu\nu} R^\lambda_{\ \mu\lambda\nu}
+\end{equation}
+
+In practice, we use a computationally efficient approximation based on
+the condition number of $\bG$:
+
+\begin{equation}
+    \text{health}_{\text{metric}} = 1 - \frac{\log(\kappa(\bG))}{\log(\kappa_{\max})}
+\end{equation}
+
+where $\kappa(\bG) = \lambda_{\max} / \lambda_{\min}$ is the condition
+number. A healthy manifold has $\kappa(\bG) \approx 1$ (isotropic
+geometry).
+
+\subsection{Metric Tensor Regularization}
+
+To prevent geometric degeneration, we add a regularization on the
+condition number:
+
+\begin{equation}
+    \calL_{\text{metric}} = \big(\kappa(\bG) - 1\big)^2
+\end{equation}
+
+This forces $\bG$ to remain close to the identity, preventing certain
+manifold directions from collapsing or inflating excessively.

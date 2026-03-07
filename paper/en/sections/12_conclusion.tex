@@ -1,0 +1,124 @@
+% ============================================================
+% Section 12: Conclusion
+% ============================================================
+
+\section{Conclusion}
+\label{sec:conclusion}
+
+\subsection{Summary of Contributions}
+
+We have presented \aletheion{}, a decoder-only LLM that integrates a
+complete epistemic system as trainable neural modules. The main
+contributions are:
+
+\begin{enumerate}
+    \item \textbf{Intrinsic epistemology}: For the first time, an LLM
+    produces complete epistemic tomography (30+ fields) per token,
+    trained end-to-end with the language model.
+
+    \item \textbf{5D Riemannian Manifold}: Tokens are mapped to a
+    learned geometric space where geodesic distances define calibrated
+    confidence.
+
+    \item \textbf{Minimal overhead}: The 11 epistemic sub-heads add
+    only {\raise.17ex\hbox{$\scriptstyle\sim$}}364K parameters ($<$0.3\%),
+    demonstrating that epistemic capability does not require significant
+    parameter increase.
+
+    \item \textbf{Calibration by construction}: The MAD loss
+    (\Cref{thm:calibration}) guarantees calibration at equilibrium,
+    unlike post-hoc methods such as temperature scaling.
+
+    \item \textbf{Collapse prevention}: The VI (\Cref{sec:vi}) and
+    EidosDecay (\Cref{sec:eidos}) prevent manifold degeneration, a
+    problem identified empirically in the predecessor system (ATIC).
+
+    \item \textbf{Native Continual Learning}: EWC + Replay integrated
+    into the trainer enable multi-phase training without catastrophic
+    forgetting.
+
+    \item \textbf{Scalability}: Configurations from 1M to 640B
+    parameters with the same architecture, facilitating research
+    (small models) and deployment (large models).
+\end{enumerate}
+
+\subsection{Comparison with ATIC}
+
+\aletheion{} arose from the need to overcome the limitations of the
+ATIC system, a deterministic orchestrator that wraps external LLMs:
+
+\begin{table}[H]
+\centering
+\caption{ATIC vs \aletheion{} comparison.}
+\label{tab:vs_atic}
+\begin{tabular}{lcc}
+\toprule
+\textbf{Aspect} & \textbf{ATIC} & \textbf{\aletheion{}} \\
+\midrule
+Epistemic & Extrinsic & \textbf{Intrinsic} \\
+Granularity & Per response & \textbf{Per token} \\
+Calibration & Heuristic & \textbf{Via loss (BCE)} \\
+Gradient & None & \textbf{End-to-end} \\
+Dependency & External LLM & \textbf{Self-contained} \\
+Latency & Multi-step pipeline & \textbf{1 forward pass} \\
+Scalability & CPU-bound & \textbf{GPU, 1M--640B} \\
+Continual Learning & None & \textbf{EWC + Replay} \\
+\midrule
+Governance & Complete & Pending \\
+Agents & 9+ registered & Pending \\
+Flexibility & Swappable base LLM & Fixed \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Future Vision: Integration}
+
+The ideal scenario is integrating \aletheion{} as the base LLM for ATIC,
+combining:
+
+\begin{itemize}
+    \item Intrinsic epistemics (\aletheion{}) with orchestration (ATIC)
+    \item Per-token tomography with governance and agents
+    \item Calibrated confidence with policy binding
+    \item Learned manifold with real-time MPC navigation
+\end{itemize}
+
+In this configuration, the 354M \aletheion{} would function as an
+epistemic evaluator of larger LLMs' responses, adding calibrated
+tomography to any external model.
+
+\subsection{Future Work}
+
+\begin{enumerate}
+    \item \textbf{Empirical evaluation}: Calibration benchmarks (ECE,
+    MCE, Brier score) against baselines (temperature scaling, ensemble,
+    MC Dropout).
+
+    \item \textbf{Transfer learning}: Verify whether the 5D manifold
+    transfers across domains (e.g., code $\to$ scientific text).
+
+    \item \textbf{Scale}: Train 1.3B and 7B versions to validate that
+    the epistemic system improves with scale.
+
+    \item \textbf{ATIC integration}: Replace ATIC's external LLM with
+    \aletheion{}, evaluating impact on response quality and tomography
+    precision.
+
+    \item \textbf{Ablation study}: Individual impact of each loss
+    component and sub-head on final calibration.
+
+    \item \textbf{VI efficiency}: Compare end-to-end trained VI vs
+    deterministic VI (ATIC) for collapse prevention.
+\end{enumerate}
+
+\subsection{Code and Reproducibility}
+
+The complete source code, including all modules, tests (261), scaling
+configurations, and training scripts, is available at:
+
+\begin{center}
+    \texttt{github.com/gnai-creator/aletheion-llm-v2}
+\end{center}
+
+The 354M parameter model can be trained on a single RTX 4090 (24GB VRAM)
+in approximately 8--10 days with 7B tokens from FineWeb-Edu.

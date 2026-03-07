@@ -1,0 +1,128 @@
+% ============================================================
+% Section 6: Intentionality Vector (VI)
+% ============================================================
+
+\section{Intentionality Vector (VI)}
+\label{sec:vi}
+
+The Intentionality Vector (VI) monitors manifold health and applies
+corrections when it detects degradation. It functions as an ``immune
+system'' for the manifold, preventing dimensional collapse and
+confidence inflation.
+
+\subsection{$\phi$ Field: Manifold Health}
+
+Manifold health is quantified by the scalar field $\phi(\calM)$,
+composed of 4 indicators:
+
+\begin{equation}
+    \phi(\calM) = \sum_{i=1}^{4} w_i \cdot \phi_i
+    \label{eq:phi_field}
+\end{equation}
+
+with $\sum w_i = 1$. The 4 components are:
+
+\paragraph{$\phi_1$: Effective Dimensionality.}
+Measures how many of the 5 dimensions are active:
+
+\begin{equation}
+    \phi_1 = \frac{1}{5} \sum_{k=0}^{4} \mathbb{1}\big[\text{std}(c_k) > \epsilon_{\text{dim}}\big]
+\end{equation}
+
+Low values indicate \textbf{dimensional collapse} --- the model projects
+tokens into a lower-dimensional subspace, losing epistemic capacity.
+
+\paragraph{$\phi_2$: Dispersion.}
+Measures position diversity on the manifold:
+
+\begin{equation}
+    \phi_2 = \frac{1}{5} \sum_{k=0}^{4} \text{std}(c_k)
+\end{equation}
+
+\paragraph{$\phi_3$: Directional Field Entropy.}
+High entropy indicates diversified exploration; low entropy indicates
+stagnation:
+
+\begin{equation}
+    \phi_3 = \frac{H(\bm{F})}{\log K}
+\end{equation}
+
+where $K$ is the number of discretization bins.
+
+\paragraph{$\phi_4$: Confidence Distribution.}
+Uses a U-shaped profile with ideal standard deviation $\sigma^* = 0.15$:
+
+\begin{equation}
+    \phi_4 = 1 - \left|\text{std}(\kappa) - \sigma^*\right| / \sigma^*
+\end{equation}
+
+This penalizes both uniformly high confidence (excess) and uniformly
+low confidence (collapse).
+
+\subsection{Severity and Activation}
+
+Intervention severity follows a square root curve for aggressive
+response in critical cases:
+
+\begin{equation}
+    s = \begin{cases}
+        0 & \text{if } \phi \geq \phi_{\text{critical}} \\
+        \sqrt{\frac{\phi_{\text{critical}} - \phi}{\phi_{\text{critical}}}} & \text{otherwise}
+    \end{cases}
+    \label{eq:vi_severity}
+\end{equation}
+
+with $\phi_{\text{critical}} = 0.5$ by default.
+
+\subsection{Manifold Correction}
+
+When $s > 0$, the VI injects a deterministic correction into the
+manifold coordinates:
+
+\begin{equation}
+    \bm{v} = s \cdot \alpha \cdot (\bm{c}_{\text{ideal}} - \bm{c})
+    \label{eq:vi_correction}
+\end{equation}
+
+where $\alpha = 0.6$ is the injection strength and
+$\bm{c}_{\text{ideal}}$ is determined by the direction of greatest
+degradation.
+
+\subsection{Confidence Penalty}
+
+When confidence is inflated (high confidence with degraded manifold),
+the VI applies a penalty:
+
+\begin{equation}
+    \kappa_{\text{corrected}} = \kappa \cdot (1 - \beta \cdot s)
+    \label{eq:vi_conf_penalty}
+\end{equation}
+
+with $\beta = 0.4$. This prevents the model from reporting high
+confidence when the manifold is in a state of collapse.
+
+\subsection{VI Regularization}
+
+The VI regularization loss encourages minimum health:
+
+\begin{equation}
+    \calL_{\text{VI}} = \E\big[\text{ReLU}(\phi_{\min} - \phi)^2\big]
+\end{equation}
+
+with $\phi_{\min} = 0.3$. This ensures the manifold does not fully
+degenerate during training.
+
+\subsection{Empirical Result: Collapse Prevention}
+
+In simulations with the ATIC system (deterministic predecessor), the VI
+demonstrated:
+
+\begin{itemize}
+    \item Effective dimensionality recovery: $D_{\text{eff}}$
+    from 2.2 to 3.2 (out of 5 possible)
+    \item Inflated confidence reduction: from 0.60 to 0.57
+    \item 3 out of 4 health indicators improved
+\end{itemize}
+
+In \aletheion{}, these mechanisms are trained end-to-end, potentially
+surpassing the deterministic system's results.

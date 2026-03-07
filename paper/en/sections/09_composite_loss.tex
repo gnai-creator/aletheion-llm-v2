@@ -1,0 +1,193 @@
+% ============================================================
+% Section 9: Composite Loss
+% ============================================================
+
+\section{Composite Loss}
+\label{sec:loss}
+
+\aletheion{} uses a composite loss with 13 components, grouped into
+standard cross-entropy and 12 epistemic losses with progressive
+annealing.
+
+\subsection{General Formulation}
+
+\begin{equation}
+    \calL_{\text{total}} = \lambda_{\text{CE}} \cdot \calL_{\text{CE}} + \alpha(t) \cdot \sum_{i=1}^{12} \lambda_i \cdot \calL_i
+    \label{eq:total_loss}
+\end{equation}
+
+where $\alpha(t) \in [0, 1]$ is the annealing factor and $\lambda_i$
+are per-component weights.
+
+\subsection{Cross-Entropy}
+
+The primary loss is the standard cross-entropy for autoregressive
+language modeling:
+
+\begin{equation}
+    \calL_{\text{CE}} = -\frac{1}{|\calS|} \sum_{t \in \calS} \log P(x_t \mid x_{<t})
+\end{equation}
+
+where $P(x_t \mid x_{<t}) = \text{softmax}(\bm{l}_t / \tau)_{x_t}$ and
+$\calS$ excludes padding tokens.
+
+\subsection{12 Epistemic Losses}
+
+\begin{table}[H]
+\centering
+\caption{Composite loss components with default weights.}
+\label{tab:losses}
+\begin{tabular}{clcp{6cm}}
+\toprule
+\textbf{\#} & \textbf{Name} & \textbf{$\lambda$} & \textbf{Objective} \\
+\midrule
+1 & VARO & 0.01 & Regularize conditional variance $q_1 \cdot q_2$ \\
+2 & VI & 0.01 & Maintain $\phi \geq \phi_{\min}$ \\
+3 & MAD Calibration & 0.01 & Calibrate confidence vs accuracy \\
+4 & Metric & 0.001 & $\kappa(\bG) \to 1$ (condition number) \\
+5 & Eidos & 0.005 & Axis balancing \\
+6 & Conflict & 0.005 & Minimize $\gamma^2$ \\
+7 & Consciousness & 0.003 & Energy $\geq 0.2$ \\
+8 & Grounding & 0.005 & Task entropy + calibrate ambiguity \\
+9 & Plasticity & 0.002 & Plasticity $\geq 0.3$ \\
+10 & Frontier & 0.002 & Maximize exploration \\
+11 & MOPsi & 0.003 & $\psi$-confidence alignment \\
+12 & Contrastive & 0.003 & Anti-collapse of views \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Loss Details}
+
+\paragraph{VARO (Conditional Variance).}
+Regularizes the interaction between both uncertainties:
+
+\begin{equation}
+    \calL_{\text{VARO}} = \E\big[(q_1 \cdot q_2 - \bar{q}_1 \cdot \bar{q}_2)^2\big]
+\end{equation}
+
+This forces $q_1$ and $q_2$ to capture complementary information,
+avoiding redundancy.
+
+\paragraph{VI Regularization.}
+Penalizes degraded manifold:
+
+\begin{equation}
+    \calL_{\text{VI}} = \E\big[\text{ReLU}(\phi_{\min} - \phi)^2\big], \quad \phi_{\min} = 0.3
+\end{equation}
+
+\paragraph{MAD Calibration.}
+BCE between confidence and accuracy (\Cref{eq:mad_loss}).
+
+\paragraph{Metric Regularization.}
+\begin{equation}
+    \calL_{\text{metric}} = (\kappa(\bG) - 1)^2
+\end{equation}
+
+\paragraph{Eidos.}
+Penalizes axis imbalance:
+
+\begin{equation}
+    \calL_{\text{eidos}} = \E\big[(\text{std}(\text{axis\_balance}) - 0.15)^2\big]
+\end{equation}
+
+\paragraph{Conflict.}
+Minimizes $\phi$-$\psi$ conflict intensity:
+
+\begin{equation}
+    \calL_{\text{conflict}} = \E[\gamma^2]
+\end{equation}
+
+\paragraph{Consciousness.}
+Prevents energy collapse:
+
+\begin{equation}
+    \calL_{\text{cons}} = \E\big[\text{ReLU}(0.2 - \text{energy})^2\big]
+\end{equation}
+
+\paragraph{Grounding.}
+Task probability entropy + ambiguity calibration:
+
+\begin{equation}
+    \calL_{\text{ground}} = -\E\Big[\sum_k p_k \log p_k\Big] + \E\big[(\text{ambiguity} - q_1)^2\big]
+\end{equation}
+
+\paragraph{Plasticity.}
+Prevents total depletion:
+
+\begin{equation}
+    \calL_{\text{plast}} = \E\big[\text{ReLU}(0.3 - \text{plast})^2\big]
+\end{equation}
+
+\paragraph{Frontier.}
+Maximizes exploration of novel regions:
+
+\begin{equation}
+    \calL_{\text{frontier}} = -\E\big[f_{\text{frontier}} \cdot \log(\text{novelty} + \epsilon)\big]
+\end{equation}
+
+\paragraph{MOPsi.}
+Aligns $\psi$ with confidence:
+
+\begin{equation}
+    \calL_{\text{mopsi}} = \E\big[(\psi_{\text{score}} - \kappa)^2\big]
+\end{equation}
+
+\paragraph{Contrastive.}
+Anti-collapse: ensures the two views are not identical:
+
+\begin{equation}
+    \calL_{\text{contr}} = -\E[\log(\text{div} + \epsilon)] + 0.1 \cdot \E\big[\text{ReLU}(\text{div} - 0.8)^2\big]
+\end{equation}
+
+The first term maximizes divergence (anti-collapse), the second prevents
+excessive divergence.
+
+\subsection{Annealing Schedule}
+\label{sec:annealing}
+
+Epistemic losses are introduced gradually to stabilize training:
+
+\begin{equation}
+    \alpha(t) = \begin{cases}
+        0 & \text{if } t < 0.1 \cdot T_{\text{total}} \\
+        \frac{t - 0.1T}{0.4T} & \text{if } 0.1T \leq t < 0.5T \\
+        1 & \text{if } t \geq 0.5T
+    \end{cases}
+    \label{eq:annealing}
+\end{equation}
+
+\begin{itemize}
+    \item \textbf{Phase 1} (0--10\%): Only $\calL_{\text{CE}}$. The model
+    learns to distribute tokens before any epistemic signal.
+
+    \item \textbf{Phase 2} (10--50\%): $\alpha$ grows linearly from 0 to 1.
+    Epistemic losses are smoothly introduced.
+
+    \item \textbf{Phase 3} (50--100\%): $\alpha = 1$. All losses active
+    at full weight.
+\end{itemize}
+
+\begin{theorem}[Annealing Stability]
+The annealing schedule ensures that epistemic gradients do not dominate
+CE gradients in early phases:
+
+\begin{equation}
+    \frac{\|\nabla_\theta \alpha \calL_{\text{epist}}\|}{\|\nabla_\theta \calL_{\text{CE}}\|} \leq \alpha(t) \cdot \frac{\sum_i \lambda_i \|\nabla_\theta \calL_i\|}{\|\nabla_\theta \calL_{\text{CE}}\|}
+\end{equation}
+
+For $\alpha(t) \ll 1$ in the initial phases, the ratio is controlled.
+\end{theorem}
+
+\subsection{Component Weights}
+
+The weights $\lambda_i$ were calibrated empirically using the following
+criteria:
+
+\begin{enumerate}
+    \item $\lambda_{\text{CE}} = 1.0$ (anchor)
+    \item Regularization losses ($\leq 0.01$): prevent degeneration
+    without dominating
+    \item Calibration losses ($\leq 0.005$): fine-tune signals
+    \item Exploration losses ($\leq 0.003$): encourage diversity
+\end{enumerate}

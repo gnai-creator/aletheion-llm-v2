@@ -1,0 +1,84 @@
+% ============================================================
+% Section 1: Introduction
+% ============================================================
+
+\section{Introduction}
+\label{sec:introduction}
+
+Large language models (LLMs) have achieved remarkable capabilities in
+text generation, reasoning, and instruction following
+\cite{brown2020gpt3, touvron2023llama}. However, these models suffer from
+a fundamental limitation: \textbf{they do not know when they do not know}.
+
+The output of a conventional LLM is a logit vector over the vocabulary,
+followed by a softmax operation that produces probabilities. While the
+entropy of this distribution may serve as a rough proxy for uncertainty,
+it conflates aleatoric uncertainty (inherent to the data) with epistemic
+uncertainty (due to the model's lack of knowledge). Furthermore, models
+trained with cross-entropy tend to be \textbf{poorly calibrated}: the
+reported confidence does not correspond to actual accuracy
+\cite{guo2017calibration}.
+
+Prior work addresses this problem extrinsically: ensembles
+\cite{lakshminarayanan2017simple}, Monte Carlo Dropout
+\cite{gal2016dropout}, or orchestration systems that analyze responses
+after generation. These approaches add latency, computational costs,
+and do not allow the epistemic signal to influence the generation
+process itself.
+
+\subsection{Contributions}
+
+In this work, we propose \aletheion{}, a decoder-only LLM that integrates
+the epistemic system \textbf{intrinsically} into the neural architecture:
+
+\begin{enumerate}
+    \item \textbf{Per-Token Epistemic Tomography}: Each token produces,
+    in addition to logits, a set of 30+ epistemic fields organized in
+    3 tiers, including decomposed uncertainty ($q_1$, $q_2$), calibrated
+    confidence, 5D manifold coordinates, and cognitive state.
+
+    \item \textbf{Differentiable Riemannian Manifold (DRM)}: Each token
+    is mapped to a learned 5D space with Riemannian geometry, where
+    geodesic distances define epistemic confidence via Metric-Aware
+    Distance (MAD).
+
+    \item \textbf{Intentionality Vector (VI)}: A monitoring and
+    correction system for manifold health, based on 4 components
+    ($\phi$) that detect dimensional collapse and apply deterministic
+    corrections.
+
+    \item \textbf{MPC Navigator}: Predictive control on the manifold
+    with beam search (K=4, D=3) that plans optimal trajectories over
+    12 intervention actions.
+
+    \item \textbf{9 Extension Modules}: EidosDecay, Filosofia3
+    ($\phi$-$\psi$ conflict), SelfModel, Grounding, PlasticityGate,
+    MPL/Frontier, MOPsi, CausalState, and Metacognitive --- totaling
+    {\raise.17ex\hbox{$\scriptstyle\sim$}}364K parameters ($<$0.3\% of the model).
+
+    \item \textbf{Composite Loss with Annealing}: 13 loss components
+    with progressive warmup that stabilizes training.
+
+    \item \textbf{Continual Learning}: EWC with online Fisher
+    accumulation and Experience Replay with reservoir sampling
+    integrated into the trainer.
+\end{enumerate}
+
+\subsection{Philosophical Motivation}
+
+The name \textit{Aletheion} derives from the Greek
+$\alpha\lambda\acute{\eta}\theta\epsilon\iota\alpha$ (\textit{al\=etheia}),
+meaning ``unconcealment'' or ``truth'' in the Heideggerian sense. The
+proposal is that the model should not merely generate text, but
+\textbf{unconceal} its own epistemic state --- making explicit what it
+knows, what it does not know, and how reliable each token is.
+
+\subsection{Paper Organization}
+
+\Cref{sec:architecture} describes the overall transformer architecture.
+\Cref{sec:epistemic} details the \texttt{EpistemicHead} and its sub-heads.
+Sections~\ref{sec:drm}--\ref{sec:mpc} elaborate on the core components
+(DRM, MAD, VI, MPC). \Cref{sec:extensions} covers the 9 extension modules.
+\Cref{sec:loss} presents the composite loss. \Cref{sec:continual} discusses
+continual learning. \Cref{sec:scalability} addresses scalability.
+\Cref{sec:conclusion} concludes.

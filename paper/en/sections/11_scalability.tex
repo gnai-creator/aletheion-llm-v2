@@ -1,0 +1,166 @@
+% ============================================================
+% Section 11: Scalability and Training
+% ============================================================
+
+\section{Scalability and Training}
+\label{sec:scalability}
+
+\aletheion{} was designed to scale from 1M to 640B parameters, with
+predefined configurations for each range.
+
+\subsection{Scaling Table}
+
+\begin{table}[H]
+\centering
+\caption{\aletheion{} scaling configurations.}
+\label{tab:scaling}
+\begin{tabular}{lrrrrrl}
+\toprule
+\textbf{Config} & \textbf{$d$} & \textbf{$n_h$} & \textbf{$N$} & \textbf{$d_{ff}$} & \textbf{Params} & \textbf{Hardware} \\
+\midrule
+1M & 64 & 2 & 4 & 256 & {\raise.17ex\hbox{$\scriptstyle\sim$}}2M & CPU \\
+10M & 256 & 4 & 6 & 1024 & {\raise.17ex\hbox{$\scriptstyle\sim$}}13M & CPU/GPU \\
+50M & 512 & 8 & 8 & 2048 & {\raise.17ex\hbox{$\scriptstyle\sim$}}42M & 1$\times$ GPU \\
+125M & 768 & 12 & 12 & 3072 & {\raise.17ex\hbox{$\scriptstyle\sim$}}110M & 1$\times$ GPU \\
+\textbf{350M} & \textbf{1024} & \textbf{16} & \textbf{24} & \textbf{4096} & \textbf{{\raise.17ex\hbox{$\scriptstyle\sim$}}354M} & \textbf{1$\times$ RTX 4090} \\
+1.3B & 2048 & 16 & 24 & 8192 & {\raise.17ex\hbox{$\scriptstyle\sim$}}1.3B & 1$\times$ A100 \\
+7B & 4096 & 32 & 32 & 11008 & {\raise.17ex\hbox{$\scriptstyle\sim$}}6.6B & 4$\times$ A100 \\
+13B & 5120 & 40 & 40 & 13824 & {\raise.17ex\hbox{$\scriptstyle\sim$}}13B & 8$\times$ A100 \\
+30B & 6656 & 52 & 60 & 17920 & {\raise.17ex\hbox{$\scriptstyle\sim$}}30B & 16$\times$ A100 \\
+70B & 8192 & 64 & 80 & 28672 & {\raise.17ex\hbox{$\scriptstyle\sim$}}70B & 32$\times$ A100 \\
+162B & 12288 & 96 & 96 & 49152 & {\raise.17ex\hbox{$\scriptstyle\sim$}}162B & 64$\times$ A100 \\
+250B & 16384 & 128 & 80 & 65536 & {\raise.17ex\hbox{$\scriptstyle\sim$}}258B & 128$\times$ H100 \\
+400B & 18432 & 144 & 96 & 73728 & {\raise.17ex\hbox{$\scriptstyle\sim$}}391B & 256$\times$ H100 \\
+640B & 20480 & 160 & 128 & 81920 & {\raise.17ex\hbox{$\scriptstyle\sim$}}644B & 512$\times$ H100 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Scaling Patterns}
+
+\paragraph{Head Dimension.}
+The per-head dimension follows a growth pattern:
+
+\begin{equation}
+    d_{\text{head}} = \begin{cases}
+        32 & \text{for 1M} \\
+        64 & \text{for 10M--350M} \\
+        128 & \text{for 1.3B+}
+    \end{cases}
+\end{equation}
+
+\paragraph{FeedForward.}
+The $d_{ff} / d$ ratio follows:
+
+\begin{equation}
+    d_{ff} = \begin{cases}
+        4d & \text{standard (up to 350M)} \\
+        \approx 2.7d & \text{SwiGLU (7B+, compensates for 3-way split)}
+    \end{cases}
+\end{equation}
+
+\paragraph{Dropout.}
+Eliminated for large models where implicit regularization from dataset
+size is sufficient:
+
+\begin{equation}
+    p_{\text{dropout}} = \begin{cases}
+        0.1 & \text{for $\leq$ 350M} \\
+        0.0 & \text{for $\geq$ 7B}
+    \end{cases}
+\end{equation}
+
+\subsection{Training Pipeline}
+
+Training uses the \texttt{DistributedTrainer} with:
+
+\begin{enumerate}
+    \item \textbf{DDP/FSDP}: Distributed Data Parallel for multi-GPU,
+    Fully Sharded Data Parallel for models $\geq$ 7B
+    \item \textbf{Mixed Precision}: bf16 for Ada Lovelace (RTX 4090) and
+    Hopper (H100), fp16 for Ampere (A100)
+    \item \textbf{Gradient Checkpointing}: Recomputes activations during
+    backward, reducing {\raise.17ex\hbox{$\scriptstyle\sim$}}60\% memory
+    at the cost of {\raise.17ex\hbox{$\scriptstyle\sim$}}30\% more compute
+    \item \textbf{Gradient Accumulation}: Simulates larger batches with
+    multiple micro-steps
+\end{enumerate}
+
+\subsection{354M Training on RTX 4090}
+
+The configuration optimized for RTX 4090 (24GB VRAM):
+
+\begin{table}[H]
+\centering
+\caption{Memory estimate for 354M on RTX 4090.}
+\label{tab:memory}
+\begin{tabular}{lr}
+\toprule
+\textbf{Component} & \textbf{Memory} \\
+\midrule
+Model (bf16) & {\raise.17ex\hbox{$\scriptstyle\sim$}}670 MB \\
+AdamW Optimizer (fp32) & {\raise.17ex\hbox{$\scriptstyle\sim$}}2.8 GB \\
+Gradients (bf16) & {\raise.17ex\hbox{$\scriptstyle\sim$}}670 MB \\
+Activations (grad checkpoint) & {\raise.17ex\hbox{$\scriptstyle\sim$}}3--4 GB \\
+PyTorch overhead & {\raise.17ex\hbox{$\scriptstyle\sim$}}1.5 GB \\
+\midrule
+\textbf{Total} & \textbf{{\raise.17ex\hbox{$\scriptstyle\sim$}}9--10 GB / 24 GB} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{Estimated throughput:} {\raise.17ex\hbox{$\scriptstyle\sim$}}8--12K tokens/s (without \texttt{torch.compile}).
+
+\paragraph{Tokens and Time:}
+With 7B tokens (Chinchilla-optimal for 354M \cite{hoffmann2022chinchilla}),
+effective batch of 64 sequences $\times$ 1024 tokens:
+
+\begin{equation}
+    \text{steps} = \frac{7 \times 10^9}{64 \times 1024} \approx 106\text{K steps}
+\end{equation}
+
+\begin{equation}
+    \text{time} \approx \frac{7 \times 10^9}{10000 \text{ tok/s}} \approx 8 \text{ days}
+\end{equation}
+
+\subsection{Scheduler: Warmup Cosine}
+
+The learning rate follows a linear warmup schedule followed by cosine
+decay:
+
+\begin{equation}
+    \eta(t) = \begin{cases}
+        \eta_{\max} \cdot \frac{t}{T_w} & \text{if } t < T_w \\
+        \eta_{\min} + \frac{\eta_{\max} - \eta_{\min}}{2} \left(1 + \cos\frac{\pi(t - T_w)}{T - T_w}\right) & \text{if } t \geq T_w
+    \end{cases}
+\end{equation}
+
+with $T_w = 2000$ warmup steps, $\eta_{\max} = 3 \times 10^{-4}$,
+$\eta_{\min} = \eta_{\max} / 10$.
+
+\subsection{Optimal Tokens (Chinchilla Law)}
+
+Following \cite{hoffmann2022chinchilla}, the optimal number of tokens
+is proportional to the number of parameters:
+
+\begin{equation}
+    T^* \approx 20 \cdot N
+\end{equation}
+
+For 354M parameters: $T^* \approx 7.1$B tokens. The default
+configuration uses 7B tokens.
+
+\subsection{Training Data}
+
+The pipeline supports two formats:
+
+\begin{enumerate}
+    \item \textbf{Memory-mapped (memmap)}: Pre-tokenized \texttt{.bin}
+    shards with fast random access via \texttt{numpy.memmap}
+    \item \textbf{HuggingFace Streaming}: Datasets loaded via
+    \texttt{datasets.load\_dataset(streaming=True)}
+\end{enumerate}
+
+The \texttt{prepare\_data.py} script converts HuggingFace datasets
+(FineWeb-Edu, TinyStories) to memmap format with tiktoken tokenization
+(GPT-2, $|V| = 50{,}257$).

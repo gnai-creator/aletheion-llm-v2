@@ -1,0 +1,199 @@
+% ============================================================
+% Section 10: Continual Learning
+% ============================================================
+
+\section{Continual Learning}
+\label{sec:continual}
+
+\aletheion{} integrates two complementary Continual Learning (CL)
+mechanisms to preserve knowledge across multiple training phases:
+Elastic Weight Consolidation (EWC) and Experience Replay.
+
+\subsection{Motivation}
+
+Catastrophic forgetting \cite{mccloskey1989catastrophic} is the
+phenomenon where neural networks lose knowledge of previous tasks
+when trained on new ones. In an LLM with an epistemic system, this is
+particularly problematic:
+
+\begin{itemize}
+    \item The 5D manifold may ``forget'' its calibrated geometry
+    \item The $\tau^2$ parameter may become decalibrated
+    \item Epistemic sub-heads may lose learned signals
+\end{itemize}
+
+\subsection{EWC: Elastic Weight Consolidation}
+\label{sec:ewc}
+
+EWC \cite{kirkpatrick2017ewc} protects important parameters by adding
+a quadratic penalty weighted by the diagonal Fisher Information Matrix
+(FIM).
+
+\subsubsection{Fisher Information Matrix}
+
+After each training phase, we estimate the diagonal FIM:
+
+\begin{equation}
+    F_i = \E\left[\left(\frac{\partial \calL}{\partial \theta_i}\right)^2\right]
+    \approx \frac{1}{N} \sum_{n=1}^{N} \left(\frac{\partial \calL(\bx^{(n)})}{\partial \theta_i}\right)^2
+    \label{eq:fisher}
+\end{equation}
+
+where $N = 256$ samples from the dataset (configurable via
+\texttt{ewc\_fisher\_samples}).
+
+$F_i$ measures the \textbf{importance} of parameter $\theta_i$: high
+values indicate the parameter is critical for the current task.
+
+\subsubsection{EWC Penalty}
+
+In the subsequent phase, the total loss includes:
+
+\begin{equation}
+    \calL_{\text{EWC}} = \frac{\lambda_{\text{EWC}}}{2} \sum_{i} F_i \cdot (\theta_i - \theta_i^*)^2
+    \label{eq:ewc_loss}
+\end{equation}
+
+where $\theta_i^*$ are the parameters after the previous phase and
+$\lambda_{\text{EWC}} = 100.0$ controls the rigidity.
+
+\subsubsection{Online EWC}
+
+For multiple phases, we use online EWC \cite{schwarz2018progress}
+with exponential accumulation:
+
+\begin{align}
+    \bar{F}_i^{(k)} &= \gamma \cdot \bar{F}_i^{(k-1)} + F_i^{(k)} \label{eq:ewc_online} \\
+    \theta_i^{*(k)} &= \theta_i^{(k)}
+\end{align}
+
+with $\gamma = 0.9$ (decay). This avoids the linear growth of terms
+that occurs with naive multi-task EWC.
+
+\subsubsection{Trainer Integration}
+
+\Cref{eq:ewc_loss} is added to the total loss after the composite loss
+computation:
+
+\begin{equation}
+    \calL_{\text{final}} = \calL_{\text{total}} + \calL_{\text{EWC}}
+\end{equation}
+
+The \texttt{consolidate\_phase()} method must be called after each phase:
+
+\begin{lstlisting}[caption={EWC usage in training.}]
+# Phase 1: Base training
+trainer.train()
+trainer.consolidate_phase()  # Compute Fisher
+
+# Phase 2: New dataset (EWC protects phase 1)
+trainer.train_loader = new_loader
+trainer.train()
+trainer.consolidate_phase()  # Accumulate Fisher (online)
+
+# Phase 3: More data (EWC protects phases 1+2)
+trainer.train_loader = another_loader
+trainer.train()
+\end{lstlisting}
+
+\subsection{Experience Replay}
+\label{sec:replay}
+
+Experience Replay complements EWC by maintaining a buffer of previous
+samples that are mixed into the current batch.
+
+\subsubsection{Reservoir Sampling}
+
+The buffer uses Vitter's reservoir sampling \cite{vitter1985reservoir}
+to maintain a uniform sample of fixed size:
+
+\begin{algorithm}[H]
+\caption{Reservoir Sampling}
+\begin{algorithmic}[1]
+\REQUIRE Buffer $\calB$ of capacity $M$, sample $\bx_n$ ($n$-th)
+\IF{$|\calB| < M$}
+    \STATE $\calB \leftarrow \calB \cup \{\bx_n\}$
+\ELSE
+    \STATE $j \sim \text{Uniform}(0, n)$
+    \IF{$j < M$}
+        \STATE $\calB[j] \leftarrow \bx_n$
+    \ENDIF
+\ENDIF
+\end{algorithmic}
+\end{algorithm}
+
+This ensures that each sample seen up to time $n$ has probability
+$M/n$ of being in the buffer, without needing to store the entire
+history.
+
+\subsubsection{Mix Batch}
+
+At each training step, a fraction $\rho = 0.1$ of the batch is replaced
+with buffer samples:
+
+\begin{equation}
+    \tilde{\calB}_t = (1 - \rho) \cdot \calB_t^{\text{new}} \cup \rho \cdot \text{sample}(\calB_{\text{replay}})
+\end{equation}
+
+\subsubsection{CPU Storage}
+
+The buffer is stored in CPU memory to avoid consuming VRAM:
+
+\begin{equation}
+    \text{mem}_{\text{buffer}} = M \cdot T \cdot 2 \text{ bytes} \approx 10000 \cdot 1024 \cdot 2 \approx 20 \text{ MB}
+\end{equation}
+
+Samples are transferred to GPU only when selected for the mix batch.
+
+\subsection{EWC + Replay Synergy}
+
+The two mechanisms are complementary:
+
+\begin{itemize}
+    \item \textbf{EWC} protects in \textit{parameter space}: prevents
+    important weights from changing
+    \item \textbf{Replay} protects in \textit{data space}: keeps
+    examples from the past in training
+\end{itemize}
+
+Together, they reduce forgetting more than either one alone
+\cite{chaudhry2019continual}.
+
+\subsection{Checkpointing with CL State}
+
+The CL state is saved alongside the model checkpoint:
+
+\begin{lstlisting}[caption={Checkpoint contents.}]
+checkpoint = {
+    'model': model.state_dict(),
+    'optimizer': optimizer.state_dict(),
+    'scheduler': scheduler.state_dict(),
+    'global_step': step,
+    'ewc_state': ewc.state_dict_ewc(),   # Fisher + ref params
+    'replay_state': replay.state_dict(),  # Buffer + counters
+}
+\end{lstlisting}
+
+This allows resuming training with CL state intact.
+
+\subsection{Configuration}
+
+\begin{table}[H]
+\centering
+\caption{Continual Learning parameters.}
+\label{tab:cl_config}
+\begin{tabular}{lrl}
+\toprule
+\textbf{Parameter} & \textbf{Default} & \textbf{Description} \\
+\midrule
+\texttt{enable\_ewc} & true & Enable EWC \\
+\texttt{ewc\_lambda} & 100.0 & EWC penalty weight \\
+\texttt{ewc\_online} & true & Online Fisher accumulation \\
+\texttt{ewc\_gamma} & 0.9 & Accumulated Fisher decay \\
+\texttt{ewc\_fisher\_samples} & 256 & Samples for Fisher estimation \\
+\texttt{enable\_replay} & true & Enable Experience Replay \\
+\texttt{replay\_buffer\_size} & 10000 & Buffer capacity \\
+\texttt{replay\_mix\_ratio} & 0.1 & Replay fraction in batch \\
+\bottomrule
+\end{tabular}
+\end{table}

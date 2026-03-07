@@ -1,0 +1,110 @@
+% ============================================================
+% Section 5: MAD - Metric-Aware Distance and Confidence
+% ============================================================
+
+\section{MAD: Confidence via Metric-Aware Distance}
+\label{sec:mad}
+
+The Metric-Aware Distance (MAD) system translates geodesic distances on
+the 5D manifold into calibrated confidence, using a learned scale
+parameter $\tau^2$ via backpropagation.
+
+\subsection{Gaussian Confidence}
+
+A token's confidence is defined as a Gaussian decay of the geodesic
+distance to the manifold centroid:
+
+\begin{equation}
+    \kappa(\bm{c}) = \exp\left(-\frac{d_{\bG}^2(\bm{c}, \bm{\mu})}{2\tau^2}\right)
+    \label{eq:mad_conf}
+\end{equation}
+
+where $d_{\bG}^2$ is the squared geodesic distance (\Cref{eq:geodesic}),
+$\bm{\mu}$ is the centroid (fixed at $[0.5, 0.5, 0.5, 0.5, 0.5]$), and
+$\tau^2$ is the scale parameter.
+
+\subsection{Bayesian $\tau^2$}
+
+The $\tau^2$ parameter is parametrized in log-scale to ensure positivity:
+
+\begin{equation}
+    \tau^2 = \exp(\log \tau^2_{\text{param}})
+\end{equation}
+
+where $\log \tau^2_{\text{param}}$ is a learned \texttt{nn.Parameter}.
+The initialization follows an Inverse-Gamma prior:
+
+\begin{equation}
+    \tau^2 \sim \text{IG}(\alpha_0, \beta_0), \quad \alpha_0 = 2, \ \beta_0 = 1
+\end{equation}
+
+The mode of the IG$(2, 1)$ prior is $\beta_0 / (\alpha_0 + 1) = 1/3$,
+providing a conservative initialization that yields moderate confidence.
+
+\subsection{Calibration via Loss}
+
+Calibration is enforced by the \texttt{MADCalibrationLoss}, which uses
+Binary Cross-Entropy between confidence and accuracy:
+
+\begin{equation}
+    \calL_{\text{MAD}} = -\frac{1}{|\calS|}\sum_{t \in \calS} \Big[
+        y_t \log \kappa_t + (1 - y_t) \log(1 - \kappa_t)
+    \Big]
+    \label{eq:mad_loss}
+\end{equation}
+
+where $y_t = \mathbb{1}[\hat{x}_t = x_t^*]$ is the correct prediction
+indicator and $\calS$ is the set of valid tokens (after masking).
+
+\begin{theorem}[Calibration at Equilibrium]
+\label{thm:calibration}
+At the minimum of \Cref{eq:mad_loss}, the confidence $\kappa$ is
+calibrated:
+
+\begin{equation}
+    \E[\kappa_t \mid \kappa_t = p] = p, \quad \forall p \in [0, 1]
+\end{equation}
+
+i.e., tokens with confidence $p$ are correct with probability $p$.
+\end{theorem}
+
+\begin{proof}
+BCE is minimized when $\kappa_t = P(y_t = 1 | \bm{c}_t)$ (well-known
+property of binary cross-entropy). Therefore, at equilibrium, $\kappa_t$
+estimates the true probability of correctness, which is exactly the
+definition of calibration.
+\end{proof}
+
+\subsection{Gradient Flow}
+
+The gradient of the MAD loss flows to the $\log \tau^2$ parameter:
+
+\begin{equation}
+    \frac{\partial \calL_{\text{MAD}}}{\partial \log \tau^2} =
+    \frac{\partial \calL_{\text{MAD}}}{\partial \kappa} \cdot
+    \frac{\partial \kappa}{\partial d^2} \cdot
+    \frac{\partial d^2}{\partial \tau^2} \cdot
+    \frac{\partial \tau^2}{\partial \log \tau^2}
+\end{equation}
+
+\begin{align}
+    \frac{\partial \kappa}{\partial d^2} &= -\frac{\kappa}{2\tau^2} \\
+    \frac{\partial d^2}{\partial \tau^2} &= 0 \quad \text{($d^2$ does not depend on $\tau^2$)} \\
+    \frac{\partial \kappa}{\partial \tau^2} &= \frac{d^2 \kappa}{2\tau^4}
+\end{align}
+
+Additionally, the gradient also flows to the coordinates $\bm{c}$
+(via $d^2$), to the metric tensor $\bG$ (via $d^2$), and to the
+embedding MLP weights (\Cref{eq:manifold_emb}).
+
+\subsection{Implementation with Autocast}
+
+For numerical stability with mixed precision (bf16), the BCE is
+implemented via \texttt{binary\_cross\_entropy\_with\_logits}:
+
+\begin{equation}
+    \text{logit}(\kappa) = \log\frac{\kappa}{1 - \kappa}
+\end{equation}
+
+followed by \texttt{F.binary\_cross\_entropy\_with\_logits(logit, target)},
+which is numerically stable under autocast.

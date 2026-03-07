@@ -1,0 +1,133 @@
+% ============================================================
+% Section 7: MPC Navigator
+% ============================================================
+
+\section{MPC Navigator on the Manifold}
+\label{sec:mpc}
+
+Model Predictive Control (MPC) extends the VI with trajectory planning
+on the manifold, using beam search to find optimal sequences of
+interventions.
+
+\subsection{Problem Formulation}
+
+The MPC navigator operates on the manifold state
+$\bm{s}_t = (\bm{c}_t, \kappa_t, \phi_t)$ and seeks the action sequence
+$\bm{a}_{t:t+D}$ that minimizes a cumulative cost:
+
+\begin{equation}
+    \bm{a}^* = \arg\min_{\bm{a}_{t:t+D}} \sum_{k=0}^{D-1} C(\hat{\bm{s}}_{t+k}, a_{t+k})
+    \label{eq:mpc_objective}
+\end{equation}
+
+where $D = 3$ is the planning horizon and $\hat{\bm{s}}$ are states
+predicted by the transition model.
+
+\subsection{Action Space}
+
+The navigator has 12 intervention actions:
+
+\begin{table}[H]
+\centering
+\caption{MPC intervention actions.}
+\label{tab:mpc_actions}
+\begin{tabular}{clcc}
+\toprule
+\textbf{ID} & \textbf{Action} & \textbf{Cost} & \textbf{Effect} \\
+\midrule
+0 & NOOP & 0.00 & None \\
+1--5 & INJECT\_DIM\_$k$ & 0.04--0.08 & Reinforce dimension $k$ \\
+6 & BOOST\_CONFIDENCE & 0.03 & Increase $\kappa$ \\
+7 & REDUCE\_CONFIDENCE & 0.05 & Decrease $\kappa$ \\
+8 & INCREASE\_DISPERSION & 0.06 & Increase dispersion \\
+9 & DECREASE\_DISPERSION & 0.06 & Decrease dispersion \\
+10 & BOOST\_ENTROPY & 0.07 & Diversify field \\
+11 & FULL\_RESET & 0.15--0.25 & Reset to centroid \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Transition Model}
+
+The transition model predicts the next state given an action:
+
+\begin{equation}
+    \hat{\bm{s}}_{t+1} = f_\theta(\bm{s}_t, a_t)
+\end{equation}
+
+implemented as a compact MLP:
+
+\begin{equation}
+    f_\theta(\bm{s}, a) = \bm{W}_2 \cdot \text{ReLU}\big(\bm{W}_1 [\bm{s}; \text{onehot}(a)] + \bm{b}_1\big) + \bm{b}_2
+\end{equation}
+
+with input $\text{dim}(\bm{s}) + 12$ and output $\text{dim}(\bm{s})$.
+
+\subsection{Cost Function}
+
+The cost at each step combines 4 terms:
+
+\begin{equation}
+    C(\bm{s}, a) = \underbrace{w_\phi (1 - \phi)}_{\text{health}} +
+    \underbrace{w_\kappa |\kappa - \kappa^*|}_{\text{calibration}} +
+    \underbrace{w_a \cdot c(a)}_{\text{action cost}} +
+    \underbrace{w_s \cdot \|\Delta a\|}_{\text{smoothness}}
+    \label{eq:mpc_cost}
+\end{equation}
+
+where $\kappa^*$ is the target confidence, $c(a)$ the intrinsic action
+cost (\Cref{tab:mpc_actions}), and $\|\Delta a\|$ penalizes abrupt
+action changes (stability).
+
+\subsection{Beam Search}
+
+The search space of $12^D = 1728$ trajectories is explored by beam
+search with width $K = 4$:
+
+\begin{algorithm}[H]
+\caption{MPC Beam Search}
+\label{alg:mpc_beam}
+\begin{algorithmic}[1]
+\REQUIRE Current state $\bm{s}_0$, model $f_\theta$, cost $C$
+\STATE $\text{beams} \leftarrow \{(\bm{s}_0, [], 0)\}$ \COMMENT{(state, actions, cost)}
+\FOR{$d = 0$ \textbf{to} $D-1$}
+    \STATE $\text{candidates} \leftarrow \emptyset$
+    \FOR{$(\bm{s}, \bm{a}, c)$ \textbf{in} beams}
+        \FOR{$a \in \{0, \ldots, 11\}$}
+            \STATE $\hat{\bm{s}} \leftarrow f_\theta(\bm{s}, a)$
+            \STATE $\hat{c} \leftarrow c + C(\hat{\bm{s}}, a)$
+            \STATE $\text{candidates} \leftarrow \text{candidates} \cup \{(\hat{\bm{s}}, \bm{a} \cup \{a\}, \hat{c})\}$
+        \ENDFOR
+    \ENDFOR
+    \STATE $\text{beams} \leftarrow \text{top-}K(\text{candidates}, \text{by cost})$
+\ENDFOR
+\RETURN first action of the lowest-cost beam
+\end{algorithmic}
+\end{algorithm}
+
+\subsection{$\phi$-Floor Constraint}
+
+The navigator operates in two modes based on the $\phi$ level:
+
+\begin{equation}
+    \text{mode} = \begin{cases}
+        \text{MAINTENANCE} & \text{if } \phi \geq \phi_{\text{floor}} = 0.45 \\
+        \text{RECOVERY} & \text{if } \phi < \phi_{\text{floor}}
+    \end{cases}
+\end{equation}
+
+In MAINTENANCE mode, action cost has higher weight (minimize
+interventions). In RECOVERY mode, health cost dominates (maximize
+$\phi$ quickly).
+
+\subsection{Integration with VI}
+
+The MPC operates on top of the VI, not as a replacement. The beam
+search result generates a navigation hint that is combined with the
+VI correction via weighted blending:
+
+\begin{equation}
+    \bm{v}_{\text{final}} = (1 - \lambda_{\text{nav}}) \bm{v}_{\text{VI}} + \lambda_{\text{nav}} \bm{v}_{\text{MPC}}
+\end{equation}
+
+with $\lambda_{\text{nav}} = 0.3$.
