@@ -528,6 +528,37 @@ aletheion-llm-v2/
 
 ---
 
+## Origem e Autoria Intelectual
+
+Os conceitos epistemicos implementados neste modelo foram **criados e desenvolvidos
+originalmente por Felipe Maya Muniz** no projeto ATIC (Adaptive Turing Intelligent
+Cognition), onde existem como modulos Python no pipeline de orquestracao:
+
+| Conceito | Descricao Original | Origem |
+|----------|--------------------|--------|
+| **DRM (Differential Reference Manifold)** | Manifold Riemanniano 5D para modelagem epistemica | ATIC v2.0+ (2025) |
+| **MAD (Metric-Aware Distance)** | Confianca Bayesiana com tau^2 e decaimento Gaussiano | ATIC v2.0+ (2025) |
+| **VI (Vetor de Intencionalidade)** | Monitoramento e correcao homestatica do manifold via phi(M) | ATIC v2.5+ (2025) |
+| **MPC Navigator** | Controle preditivo com beam search no manifold epistemico | ATIC v3.0+ (2025) |
+| **MOPsi (Modulo Orientador de Psi)** | Estado humano 5D + mediacao phi-psi | ATIC v3.0+ (2025) |
+| **MPL (Modulo Projetor de Longo Prazo)** | Density tracking + frontier exploration | ATIC v3.0+ (2025) |
+| **EidosDecay** | Decay invertido + dream cycles para balanceamento de eixos | ATIC v2.5+ (2025) |
+| **Filosofia3** | Conflito phi-psi negociado | ATIC v3.0+ (2025) |
+| **SelfModel** | Modelo de consciencia com mood, curiosidade, energia, drives | ATIC v2.0+ (2025) |
+| **Termodinamica Computacional** | Custo de Landauer, plasticidade, dinamicas irreversiveis | ATIC v3.0+ (2025) |
+| **Tomografia Epistemica** | Analise multi-dimensional por token com 30+ campos | ATIC v2.0+ (2025) |
+
+No ATIC, estes conceitos operam como calculos Python no pipeline de pos-processamento.
+No AletheionV2, sao **transpostos para nn.Modules treinaveis** dentro da rede neural,
+permitindo que a epistemica seja aprendida end-to-end e influencie diretamente a geracao.
+
+Esta transposicao de orquestracao-em-Python para modulos-neurais-treinaveis e a
+contribuicao central deste trabalho.
+
+**Repositorio ATIC:** [github.com/gnai-creator/atic_consulting](https://github.com/gnai-creator/atic_consulting)
+
+---
+
 ## Papers
 
 O artigo descrevendo a arquitetura e fundamentacao teorica esta disponivel em:
