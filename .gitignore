@@ -10,3 +10,4 @@ checkpoints/
 *.pt
 *.ckpt
 data/
+.venv/
