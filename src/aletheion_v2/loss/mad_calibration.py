@@ -55,8 +55,12 @@ class MADCalibrationLoss(nn.Module):
         correct = (predictions == labels).float()  # [B, T]
 
         # BCE entre confianca e acuracia
+        # Usa binary_cross_entropy_with_logits (safe para autocast bf16)
         conf = confidence.squeeze(-1).clamp(self.eps, 1.0 - self.eps)
-        loss = F.binary_cross_entropy(conf, correct, reduction="none")  # [B, T]
+        conf_logits = torch.log(conf / (1.0 - conf))  # inverse sigmoid -> logits
+        loss = F.binary_cross_entropy_with_logits(
+            conf_logits, correct, reduction="none"
+        )  # [B, T]
 
         if mask is not None:
             loss = loss * mask
