@@ -37,7 +37,7 @@ save_interval: 1000
 mixed_precision: bf16
 gradient_accumulation_steps: 4
 gradient_checkpointing: true
-compile_model: true
+compile_model: false  # Triton nao disponivel no Windows; true para Linux
 
 # --- Data ---
 # data_dir sera passado via --data-dir no CLI

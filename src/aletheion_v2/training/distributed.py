@@ -93,9 +93,16 @@ def wrap_model_ddp(
     if config.gradient_checkpointing:
         _enable_gradient_checkpointing(model)
 
-    # torch.compile (PyTorch 2.0+)
+    # torch.compile (PyTorch 2.0+, requer Triton - Linux only)
     if config.compile_model and hasattr(torch, "compile"):
-        model = torch.compile(model)
+        import sys
+        if sys.platform == "win32":
+            import logging
+            logging.getLogger(__name__).warning(
+                "torch.compile desabilitado: Triton nao disponivel no Windows"
+            )
+        else:
+            model = torch.compile(model)
 
     if not config.distributed:
         return model
