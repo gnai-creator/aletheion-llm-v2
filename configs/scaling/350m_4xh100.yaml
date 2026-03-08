@@ -1,0 +1,70 @@
+# ~350M params - Otimizado para 4x H100 80GB (RunPod/Vast.ai)
+#
+# Estimativa de memoria por GPU (FSDP shard):
+#   Modelo bf16 (sharded /4): ~170MB
+#   Optimizer states (sharded /4): ~700MB
+#   Gradients bf16: ~670MB
+#   Activations: ~4-6GB
+#   Overhead: ~2GB
+#   Total estimado por GPU: ~8-10GB (de 80GB disponiveis)
+#
+# Com 80GB livre, batch_size=16 por GPU confortavelmente.
+# Effective batch: batch_size(16) * num_gpus(4) * grad_accum(1) = 64
+# Throughput estimado: ~140-160K tokens/s
+# Tempo para ~6.86B tokens restantes: ~12-13 horas
+
+# --- Modelo ---
+vocab_size: 50257
+d_model: 1024
+n_heads: 16
+n_layers: 24
+d_ff: 4096
+max_seq_len: 1024
+dropout: 0.1
+
+# --- Training ---
+batch_size: 16
+learning_rate: 0.0003
+weight_decay: 0.01
+warmup_steps: 2000
+grad_clip: 1.0
+total_tokens: 7_000_000_000
+log_interval: 50
+eval_interval: 500
+early_stopping_patience: 10
+save_interval: 1000
+
+# --- Performance 4x H100 ---
+mixed_precision: bf16
+gradient_accumulation_steps: 1  # effective batch = 16 * 4 * 1 = 64
+gradient_checkpointing: false   # H100 tem VRAM sobrando, desabilita pra velocidade
+compile_model: true             # torch.compile + Triton = +20-30% throughput
+distributed: true
+dist_backend: nccl
+fsdp: true
+
+# --- Data ---
+data_dir: data/350m_rtx4090
+streaming: false
+num_workers: 8
+prefetch_factor: 4
+
+# --- STP ---
+enable_stp: true
+lambda_stp: 0.01
+stp_num_triplets: 1
+
+# --- Continual Learning ---
+enable_ewc: true
+ewc_lambda: 100.0
+ewc_online: true
+ewc_gamma: 0.9
+ewc_fisher_samples: 256
+enable_replay: true
+replay_buffer_size: 10000
+replay_mix_ratio: 0.1
+
+# --- Logging ---
+save_dir: checkpoints/350m_4xh100
+wandb_project: aletheion-v2-350m
+save_total_limit: 5
