@@ -205,7 +205,7 @@ Open Source (AGPL-3.0)           Commercial License
 - Sole architect of Aletheion LLM v2 and ATIC cognitive platform
 - Built 8,000+ lines of production-quality code with 261 tests
 - Deep expertise in epistemic AI, Riemannian geometry, and LLM training
-- Contact: felipemuniz.grsba@gmail.com
+- Contact: felipe@truthagi.ai
 
 ### Hiring Plan (with funding)
 
@@ -259,7 +259,7 @@ Open Source (AGPL-3.0)           Commercial License
 ## Contact
 
 Felipe Maya Muniz
-felipemuniz.grsba@gmail.com
+felipe@truthagi.ai
 GitHub: [gnai-creator/aletheion-llm-v2](https://github.com/gnai-creator/aletheion-llm-v2)
 
 ---

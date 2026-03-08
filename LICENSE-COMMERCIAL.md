@@ -44,7 +44,7 @@ Voce precisa de uma licenca comercial se:
 
 Para obter uma licenca comercial ou tirar duvidas:
 
-- **E-mail:** felipemuniz.grsba@gmail.com
+- **E-mail:** felipe@truthagi.ai
 - **Assunto:** Licenca Comercial - Aletheion LLM v2
 
 ## Perguntas Frequentes

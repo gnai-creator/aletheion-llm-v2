@@ -586,7 +586,7 @@ Para uso em projetos proprietarios, SaaS sem obrigacao de abrir codigo, ou
 redistribuicao sem copyleft, uma [licenca comercial](LICENSE-COMMERCIAL.md)
 esta disponivel.
 
-Contato: felipemuniz.grsba@gmail.com
+Contato: felipe@truthagi.ai
 
 ### Contribuicoes
 

@@ -51,7 +51,7 @@ comunidade.
 
 Instancias de comportamento abusivo, assediador ou de outra forma inaceitavel
 podem ser reportadas entrando em contato com o mantenedor do projeto em
-felipemuniz.grsba@gmail.com.
+felipe@truthagi.ai.
 
 Todas as reclamacoes serao revisadas e investigadas e resultarao em uma
 resposta considerada necessaria e apropriada as circunstancias. A equipe

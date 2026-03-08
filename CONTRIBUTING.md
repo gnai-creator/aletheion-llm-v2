@@ -99,4 +99,4 @@ Abra uma issue com:
 ## Duvidas
 
 Abra uma issue com a tag `question` ou entre em contato via
-felipemuniz.grsba@gmail.com.
+felipe@truthagi.ai.

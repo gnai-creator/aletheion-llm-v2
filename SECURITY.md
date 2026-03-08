@@ -13,7 +13,7 @@
 Se voce descobrir uma vulnerabilidade de seguranca, por favor reporte
 de forma responsavel:
 
-1. **E-mail**: felipemuniz.grsba@gmail.com
+1. **E-mail**: felipe@truthagi.ai
 2. **Assunto**: `[SECURITY] Aletheion LLM v2 - <breve descricao>`
 3. **Inclua**:
    - Descricao da vulnerabilidade

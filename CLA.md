@@ -65,7 +65,7 @@ Data: [AAAA-MM-DD]
 
 | Nome | E-mail | Data |
 |------|--------|------|
-| Felipe Maya Muniz | felipemuniz.grsba@gmail.com | 2025-01-01 |
+| Felipe Maya Muniz | felipe@truthagi.ai | 2025-01-01 |
 
 ---
 
