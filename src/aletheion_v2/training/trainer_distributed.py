@@ -532,6 +532,7 @@ class DistributedTrainer:
             )
             self.save_checkpoint("final.pt")
             self._save_training_log(history, total_time)
+            self._generate_plots()
 
         cleanup_distributed()
         return {"history": history, "total_time": total_time}
@@ -678,6 +679,37 @@ class DistributedTrainer:
         with open(path, "w") as f:
             json.dump(log, f, indent=2, default=str)
         print(f"  [LOG] {path}")
+
+    def _generate_plots(self) -> None:
+        """Gera graficos de treinamento automaticamente no final."""
+        log_path = self.save_dir / "training_log.json"
+        if not log_path.exists():
+            print("[WARN] training_log.json nao encontrado, pulando plots")
+            return
+
+        try:
+            import subprocess
+            import sys
+            plot_script = Path(__file__).parent.parent.parent.parent / "scripts" / "plot_training.py"
+            if not plot_script.exists():
+                print(f"[WARN] plot_training.py nao encontrado em {plot_script}")
+                return
+
+            plot_dir = self.save_dir / "plots"
+            result = subprocess.run(
+                [
+                    sys.executable, str(plot_script),
+                    "--log", str(log_path),
+                    "--output", str(plot_dir),
+                ],
+                capture_output=True, text=True, timeout=120,
+            )
+            if result.returncode == 0:
+                print(f"  [PLOT] Graficos gerados em {plot_dir}/")
+            else:
+                print(f"  [WARN] Plots falharam: {result.stderr[:200]}")
+        except Exception as e:
+            print(f"  [WARN] Nao foi possivel gerar plots: {e}")
 
     def _cleanup_old_checkpoints(self) -> None:
         """Remove checkpoints antigos alem do limite."""

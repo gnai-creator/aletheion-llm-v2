@@ -266,6 +266,7 @@ def plot_loss_components(metrics, output_dir, label=""):
         "vi_loss": ("VI Reg", "#FF5722"),
         "mad_loss": ("MAD Cal", "#00BCD4"),
         "metric_loss": ("Metric Reg", "#FFC107"),
+        "stp_loss": ("STP", "#E91E63"),
     }
 
     found = False
@@ -414,6 +415,205 @@ def plot_drm_manifold(metrics, output_dir, label=""):
     fig.savefig(output_dir / "drm_manifold.png", dpi=150, bbox_inches="tight")
     plt.close(fig)
     print(f"  [OK] drm_manifold.png")
+
+
+def plot_consciousness(metrics, output_dir, label=""):
+    """Grafico 8: Metricas de consciencia (mood, curiosity, energy, drives)."""
+    fig, axes = plt.subplots(2, 3, figsize=(16, 10))
+    prefix = f"{label} - " if label else ""
+
+    pairs = [
+        (axes[0, 0], "avg_mood", "Mood", "#E91E63"),
+        (axes[0, 1], "avg_curiosity", "Curiosity", "#9C27B0"),
+        (axes[0, 2], "avg_energy", "Energy", "#FF9800"),
+        (axes[1, 0], "drive_curiosity", "Drive: Curiosity", "#00BCD4"),
+        (axes[1, 1], "drive_mastery", "Drive: Mastery", "#4CAF50"),
+        (axes[1, 2], "drive_autonomy", "Drive: Autonomy", "#3F51B5"),
+    ]
+
+    for ax, key, title, color in pairs:
+        if key in metrics:
+            vals = metrics[key]
+            ax.plot(range(len(vals)), vals, color=color, alpha=0.4, linewidth=0.5)
+            if len(vals) > 20:
+                s = smooth(vals, min(30, len(vals) // 5))
+                ax.plot(range(len(s)), s, color=color, linewidth=2)
+        ax.set_title(f"{prefix}{title}", fontsize=10)
+        ax.set_xlabel("Step")
+        ax.set_ylim(0, 1)
+        ax.grid(True)
+
+    fig.suptitle(f"{prefix}Consciousness & Drives", fontsize=14, y=1.02)
+    fig.tight_layout()
+    fig.savefig(output_dir / "consciousness.png", dpi=150, bbox_inches="tight")
+    plt.close(fig)
+    print(f"  [OK] consciousness.png")
+
+
+def plot_phi_components(metrics, output_dir, label=""):
+    """Grafico 9: Phi components (dim, disp, ent, conf) + total."""
+    fig, axes = plt.subplots(1, 5, figsize=(20, 4))
+    prefix = f"{label} - " if label else ""
+
+    pairs = [
+        (axes[0], "phi_dim", "Phi Dim", "#F44336"),
+        (axes[1], "phi_disp", "Phi Disp", "#E91E63"),
+        (axes[2], "phi_ent", "Phi Ent", "#9C27B0"),
+        (axes[3], "phi_conf", "Phi Conf", "#673AB7"),
+        (axes[4], "avg_phi", "Phi Total", "#FF5722"),
+    ]
+
+    for ax, key, title, color in pairs:
+        if key in metrics:
+            vals = metrics[key]
+            ax.plot(range(len(vals)), vals, color=color, alpha=0.4, linewidth=0.5)
+            if len(vals) > 20:
+                s = smooth(vals, min(30, len(vals) // 5))
+                ax.plot(range(len(s)), s, color=color, linewidth=2)
+        ax.set_title(title, fontsize=10)
+        ax.set_xlabel("Step")
+        ax.set_ylim(0, 1)
+        ax.grid(True)
+
+    fig.suptitle(f"{prefix}Phi Components (Manifold Health)", fontsize=14, y=1.05)
+    fig.tight_layout()
+    fig.savefig(output_dir / "phi_components.png", dpi=150, bbox_inches="tight")
+    plt.close(fig)
+    print(f"  [OK] phi_components.png")
+
+
+def plot_tier_metrics(metrics, output_dir, label=""):
+    """Grafico 10: Metricas dos tiers 1/2/3."""
+    fig, axes = plt.subplots(3, 4, figsize=(18, 12))
+    prefix = f"{label} - " if label else ""
+
+    # Tier 1
+    tier1 = [
+        (axes[0, 0], "avg_conflict", "Conflict Intensity", "#F44336"),
+        (axes[0, 1], "avg_eidos_weight", "Eidos Weight", "#E91E63"),
+        (axes[0, 2], "avg_mood", "Mood", "#9C27B0"),
+        (axes[0, 3], "avg_energy", "Energy", "#FF9800"),
+    ]
+
+    # Tier 2
+    tier2 = [
+        (axes[1, 0], "avg_task_confidence", "Task Confidence", "#00BCD4"),
+        (axes[1, 1], "avg_ambiguity", "Ambiguity", "#009688"),
+        (axes[1, 2], "avg_plasticity", "Plasticity", "#4CAF50"),
+        (axes[1, 3], "avg_frontier", "Frontier Score", "#8BC34A"),
+    ]
+
+    # Tier 3
+    tier3 = [
+        (axes[2, 0], "avg_psi", "Psi (MOPsi)", "#3F51B5"),
+        (axes[2, 1], "avg_mediated", "Mediated Score", "#2196F3"),
+        (axes[2, 2], "avg_state_gate", "State Gate", "#03A9F4"),
+        (axes[2, 3], "avg_divergence", "Divergence (Meta)", "#607D8B"),
+    ]
+
+    for group_label, items in [("Tier 1", tier1), ("Tier 2", tier2), ("Tier 3", tier3)]:
+        for ax, key, title, color in items:
+            if key in metrics:
+                vals = metrics[key]
+                ax.plot(range(len(vals)), vals, color=color, alpha=0.4, linewidth=0.5)
+                if len(vals) > 20:
+                    s = smooth(vals, min(30, len(vals) // 5))
+                    ax.plot(range(len(s)), s, color=color, linewidth=2)
+            ax.set_title(title, fontsize=9)
+            ax.set_xlabel("Step")
+            ax.grid(True)
+
+    # Labels de tier na margem esquerda
+    for i, lbl in enumerate(["Tier 1: Eidos/Filosofia3/Consciousness",
+                              "Tier 2: Grounding/Plasticity/MPL",
+                              "Tier 3: MOPsi/CausalState/Meta"]):
+        axes[i, 0].set_ylabel(lbl, fontsize=8)
+
+    fig.suptitle(f"{prefix}Extension Module Metrics (Tiers 1-3)", fontsize=14, y=1.02)
+    fig.tight_layout()
+    fig.savefig(output_dir / "tier_metrics.png", dpi=150, bbox_inches="tight")
+    plt.close(fig)
+    print(f"  [OK] tier_metrics.png")
+
+
+def plot_drm_coords(metrics, output_dir, label=""):
+    """Grafico 11: Coordenadas DRM 5D + std."""
+    fig, axes = plt.subplots(2, 3, figsize=(16, 8))
+    prefix = f"{label} - " if label else ""
+
+    coord_colors = ["#F44336", "#E91E63", "#9C27B0", "#3F51B5", "#00BCD4"]
+    for i in range(5):
+        ax = axes[i // 3, i % 3]
+        key = f"drm_coord_{i}"
+        if key in metrics:
+            vals = metrics[key]
+            ax.plot(range(len(vals)), vals, color=coord_colors[i], alpha=0.4, linewidth=0.5)
+            if len(vals) > 20:
+                s = smooth(vals, min(30, len(vals) // 5))
+                ax.plot(range(len(s)), s, color=coord_colors[i], linewidth=2)
+        ax.set_title(f"DRM Coord {i}", fontsize=10)
+        ax.set_xlabel("Step")
+        ax.grid(True)
+
+    # Coord std
+    ax = axes[1, 2]
+    if "drm_coord_std" in metrics:
+        vals = metrics["drm_coord_std"]
+        ax.plot(range(len(vals)), vals, color="#FF9800", alpha=0.4, linewidth=0.5)
+        if len(vals) > 20:
+            s = smooth(vals, min(30, len(vals) // 5))
+            ax.plot(range(len(s)), s, color="#FF9800", linewidth=2)
+    ax.set_title("DRM Coord Std", fontsize=10)
+    ax.set_xlabel("Step")
+    ax.grid(True)
+
+    fig.suptitle(f"{prefix}DRM 5D Manifold Coordinates", fontsize=14, y=1.02)
+    fig.tight_layout()
+    fig.savefig(output_dir / "drm_coords.png", dpi=150, bbox_inches="tight")
+    plt.close(fig)
+    print(f"  [OK] drm_coords.png")
+
+
+def plot_all_losses(metrics, output_dir, label=""):
+    """Grafico 12: Todas as 14 losses individuais."""
+    fig, axes = plt.subplots(3, 5, figsize=(22, 12))
+    prefix = f"{label} - " if label else ""
+
+    loss_items = [
+        ("ce_loss", "CE", "#2196F3"),
+        ("stp_loss", "STP", "#E91E63"),
+        ("varo_loss", "VARO", "#9C27B0"),
+        ("vi_loss", "VI", "#FF5722"),
+        ("mad_loss", "MAD", "#00BCD4"),
+        ("metric", "Metric Reg", "#FFC107"),
+        ("eidos", "Eidos", "#F44336"),
+        ("conflict", "Conflict", "#E91E63"),
+        ("consciousness", "Consciousness", "#9C27B0"),
+        ("grounding", "Grounding", "#009688"),
+        ("plasticity", "Plasticity", "#4CAF50"),
+        ("frontier", "Frontier", "#8BC34A"),
+        ("mopsi", "MOPsi", "#3F51B5"),
+        ("contrastive", "Contrastive", "#607D8B"),
+        ("annealing", "Annealing Factor", "#795548"),
+    ]
+
+    for idx, (key, name, color) in enumerate(loss_items):
+        ax = axes[idx // 5, idx % 5]
+        if key in metrics:
+            vals = metrics[key]
+            ax.plot(range(len(vals)), vals, color=color, alpha=0.4, linewidth=0.5)
+            if len(vals) > 20:
+                s = smooth(vals, min(30, len(vals) // 5))
+                ax.plot(range(len(s)), s, color=color, linewidth=2)
+        ax.set_title(name, fontsize=9)
+        ax.set_xlabel("Step")
+        ax.grid(True)
+
+    fig.suptitle(f"{prefix}All 14 Loss Components + Annealing", fontsize=14, y=1.02)
+    fig.tight_layout()
+    fig.savefig(output_dir / "all_losses.png", dpi=150, bbox_inches="tight")
+    plt.close(fig)
+    print(f"  [OK] all_losses.png")
 
 
 def plot_comparison(all_metrics, labels, output_dir):
@@ -665,9 +865,14 @@ def generate_all_plots(metrics, output_dir, label=""):
     plot_throughput(metrics, output_dir, label)
     plot_perplexity(metrics, output_dir, label)
     plot_drm_manifold(metrics, output_dir, label)
+    plot_consciousness(metrics, output_dir, label)
+    plot_phi_components(metrics, output_dir, label)
+    plot_tier_metrics(metrics, output_dir, label)
+    plot_drm_coords(metrics, output_dir, label)
+    plot_all_losses(metrics, output_dir, label)
     plot_dashboard(metrics, output_dir, label)
 
-    print(f"\n[OK] 8 graficos gerados em {output_dir}/")
+    print(f"\n[OK] 13 graficos gerados em {output_dir}/")
 
 
 def main():
