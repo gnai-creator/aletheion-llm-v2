@@ -15,8 +15,8 @@ POD_HOST="38.80.152.148"
 POD_PORT="31258"
 POD_KEY="$HOME/.ssh/id_ed25519"
 POD_USER="root"
-POD_CKPT_DIR="/workspace/aletheion-llm-v2/checkpoints/350m_4xh100"
-POD_LOG="/workspace/aletheion-llm-v2/checkpoints/350m_4xh100/cloud_train.log"
+POD_CKPT_DIR="/root/aletheion-ckpt/350m_4xh100"
+POD_LOG="/root/aletheion-ckpt/350m_4xh100/cloud_train.log"
 
 # --- Local ---
 LOCAL_CKPT_DIR="$HOME/dev/ai/aletheion-llm-v2/checkpoints/350m_4xh100"
@@ -40,15 +40,24 @@ mkdir -p "$LOCAL_CKPT_DIR"
 
 sync_checkpoints() {
     log "Sincronizando checkpoints..."
-    rsync -avz --progress \
-        -e "ssh -p ${POD_PORT} -i ${POD_KEY} -o StrictHostKeyChecking=no" \
-        "${POD_USER}@${POD_HOST}:${POD_CKPT_DIR}/" \
-        "${LOCAL_CKPT_DIR}/" \
-        --include="step_*.pt" \
-        --include="train.log" \
-        --include="cloud_train.log" \
-        --include="*.png" \
-        --exclude="*" 2>&1 | grep -E "step_|\.log|\.png|sent|total"
+
+    # Lista checkpoints remotos
+    REMOTE_CKPTS=$($SSH_CMD "ls ${POD_CKPT_DIR}/step_*.pt 2>/dev/null" 2>/dev/null || echo "")
+
+    for REMOTE in $REMOTE_CKPTS; do
+        FNAME=$(basename "$REMOTE")
+        LOCAL_FILE="${LOCAL_CKPT_DIR}/${FNAME}"
+        if [ ! -f "$LOCAL_FILE" ]; then
+            log "Baixando ${FNAME}..."
+            scp -P ${POD_PORT} -i ${POD_KEY} -o StrictHostKeyChecking=no \
+                "${POD_USER}@${POD_HOST}:${REMOTE}" "${LOCAL_FILE}" 2>&1 | tail -1
+            log "${FNAME} baixado."
+        fi
+    done
+
+    # Baixa logs
+    scp -P ${POD_PORT} -i ${POD_KEY} -o StrictHostKeyChecking=no \
+        "${POD_USER}@${POD_HOST}:${POD_LOG}" "${LOCAL_CKPT_DIR}/cloud_train.log" 2>/dev/null || true
 
     # Mostra checkpoints locais
     log "Checkpoints locais:"
