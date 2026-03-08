@@ -246,7 +246,7 @@ class DistributedTrainer:
 
         # Forward com mixed precision
         with self.amp_context:
-            output = self.model(input_ids, return_tomography=True)
+            output = self.model(input_ids, return_tomography=False)
 
             # Metric tensor G
             G = None
