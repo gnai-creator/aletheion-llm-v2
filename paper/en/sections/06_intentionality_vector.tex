@@ -134,10 +134,10 @@ does not degenerate during training. The second term penalizes high
 severity, encouraging the model to maintain health proactively rather
 than relying on corrections.
 
-\subsection{Empirical Result: Collapse Prevention}
+\subsection{Preliminary Evidence: Collapse Prevention}
 
-In simulations with the ATIC system (deterministic predecessor), the VI
-demonstrated:
+In simulations with the ATIC system (deterministic predecessor, where VI
+operates as a post-hoc correction module), the VI demonstrated:
 
 \begin{itemize}
     \item Effective dimensionality recovery: $D_{\text{eff}}$
@@ -146,5 +146,7 @@ demonstrated:
     \item 3 out of 4 health indicators improved
 \end{itemize}
 
-In \aletheion{}, these mechanisms are trained end-to-end, potentially
-surpassing the deterministic system's results.
+\textbf{Note:} These results are from the deterministic ATIC system, not
+from \aletheion{} training. In \aletheion{}, these mechanisms are trained
+end-to-end, which may yield different dynamics. Empirical validation on
+the trained 354M model is ongoing (see \Cref{sec:conclusion}, Future Work).

@@ -22,7 +22,7 @@ predefined configurations for each range.
 10M & 256 & 4 & 6 & 1024 & {\raise.17ex\hbox{$\scriptstyle\sim$}}13M & CPU/GPU \\
 50M & 512 & 8 & 8 & 2048 & {\raise.17ex\hbox{$\scriptstyle\sim$}}42M & 1$\times$ GPU \\
 125M & 768 & 12 & 12 & 3072 & {\raise.17ex\hbox{$\scriptstyle\sim$}}110M & 1$\times$ GPU \\
-\textbf{350M} & \textbf{1024} & \textbf{16} & \textbf{24} & \textbf{4096} & \textbf{{\raise.17ex\hbox{$\scriptstyle\sim$}}354M} & \textbf{1$\times$ RTX 4090} \\
+\textbf{350M} & \textbf{1024} & \textbf{16} & \textbf{24} & \textbf{4096} & \textbf{{\raise.17ex\hbox{$\scriptstyle\sim$}}354M} & \textbf{4$\times$ H100 / 1$\times$ RTX 4090} \\
 1.3B & 2048 & 16 & 24 & 8192 & {\raise.17ex\hbox{$\scriptstyle\sim$}}1.3B & 1$\times$ A100 \\
 7B & 4096 & 32 & 32 & 11008 & {\raise.17ex\hbox{$\scriptstyle\sim$}}6.6B & 4$\times$ A100 \\
 13B & 5120 & 40 & 40 & 13824 & {\raise.17ex\hbox{$\scriptstyle\sim$}}13B & 8$\times$ A100 \\
@@ -86,13 +86,45 @@ Training uses the \texttt{DistributedTrainer} with:
     multiple micro-steps
 \end{enumerate}
 
-\subsection{354M Training on RTX 4090}
+\subsection{354M Two-Phase Training}
 
-The configuration optimized for RTX 4090 (24GB VRAM):
+Training the 354M model follows a two-phase strategy:
+
+\paragraph{Phase 1: Backbone (4$\times$ H100 80GB).}
+The backbone is trained with DDP (Distributed Data Parallel) on 4$\times$ H100 SXM 80GB
+GPUs using cross-entropy and STP losses only (tomography disabled for throughput).
+The configuration uses batch size 16 per GPU, effective batch 64, bf16 mixed precision,
+without gradient checkpointing (sufficient VRAM):
 
 \begin{table}[H]
 \centering
-\caption{Memory estimate for 354M on RTX 4090.}
+\caption{Phase 1 training configuration (4$\times$ H100).}
+\label{tab:phase1}
+\begin{tabular}{lr}
+\toprule
+\textbf{Parameter} & \textbf{Value} \\
+\midrule
+GPUs & 4$\times$ H100 SXM 80GB \\
+Parallelism & DDP \\
+Batch size (per GPU) & 16 \\
+Effective batch & 64 \\
+Gradient checkpointing & Off \\
+Throughput & {\raise.17ex\hbox{$\scriptstyle\sim$}}150K tokens/s \\
+Total tokens & 7B \\
+Estimated time & {\raise.17ex\hbox{$\scriptstyle\sim$}}13 hours \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{Phase 2: Epistemic Fine-Tuning (1$\times$ RTX 4090).}
+After the backbone converges, the full epistemic system (14 losses with annealing)
+is activated on a single RTX 4090 (24GB VRAM) with conservative hyperparameters:
+learning rate 3$\times$ reduced, epistemic lambdas at 10\% of defaults with slow
+annealing (30\% warmup, 80\% ramp), and EWC to protect the backbone.
+
+\begin{table}[H]
+\centering
+\caption{Memory estimate for Phase 2 on RTX 4090.}
 \label{tab:memory}
 \begin{tabular}{lr}
 \toprule
@@ -102,17 +134,16 @@ Model (bf16) & {\raise.17ex\hbox{$\scriptstyle\sim$}}670 MB \\
 AdamW Optimizer (fp32) & {\raise.17ex\hbox{$\scriptstyle\sim$}}2.8 GB \\
 Gradients (bf16) & {\raise.17ex\hbox{$\scriptstyle\sim$}}670 MB \\
 Activations (grad checkpoint) & {\raise.17ex\hbox{$\scriptstyle\sim$}}3--4 GB \\
+Epistemic tomography & {\raise.17ex\hbox{$\scriptstyle\sim$}}8--12 GB \\
 PyTorch overhead & {\raise.17ex\hbox{$\scriptstyle\sim$}}1.5 GB \\
 \midrule
-\textbf{Total} & \textbf{{\raise.17ex\hbox{$\scriptstyle\sim$}}9--10 GB / 24 GB} \\
+\textbf{Total} & \textbf{{\raise.17ex\hbox{$\scriptstyle\sim$}}17--22 GB / 24 GB} \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-\paragraph{Estimated throughput:} {\raise.17ex\hbox{$\scriptstyle\sim$}}8--12K tokens/s (without \texttt{torch.compile}).
-
 \paragraph{Tokens and Time:}
-With 7B tokens (Chinchilla-optimal for 354M \cite{hoffmann2022chinchilla}),
+Phase 1 trains on 7B tokens (Chinchilla-optimal for 354M \cite{hoffmann2022chinchilla}),
 effective batch of 64 sequences $\times$ 1024 tokens:
 
 \begin{equation}
@@ -120,8 +151,12 @@ effective batch of 64 sequences $\times$ 1024 tokens:
 \end{equation}
 
 \begin{equation}
-    \text{time} \approx \frac{7 \times 10^9}{10000 \text{ tok/s}} \approx 8 \text{ days}
+    \text{time (Phase 1)} \approx \frac{7 \times 10^9}{150000 \text{ tok/s}} \approx 13 \text{ hours}
 \end{equation}
+
+Phase 2 fine-tunes on 1B tokens ({\raise.17ex\hbox{$\scriptstyle\sim$}}14\% of the dataset)
+at {\raise.17ex\hbox{$\scriptstyle\sim$}}8--12K tokens/s on a single RTX 4090,
+estimated at {\raise.17ex\hbox{$\scriptstyle\sim$}}17--34 hours.
 
 \subsection{Scheduler: Warmup Cosine}
 

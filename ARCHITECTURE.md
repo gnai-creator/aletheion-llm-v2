@@ -18,7 +18,7 @@ input_ids [B,T] -->| Embeddings               |
                     |   MultiHeadAttention     |
                     |   + RoPE rotary pos      |
                     |   + causal mask          |
-                    |   FeedForward (SwiGLU)   |
+                    |   FeedForward (GELU)     |
                     |   LayerNorm (pre-norm)   |
                     |                          |
                     | ln_final                 |
@@ -150,7 +150,7 @@ for block in self.blocks:
     hidden = hidden + attn_out              # Residual
 
     normed = block.ln2(hidden)
-    ff_out = block.feed_forward(normed)     # SwiGLU: gate * up * down
+    ff_out = block.feed_forward(normed)     # GELU: W2 * GELU(W1 * x)
     hidden = hidden + ff_out                # Residual
 ```
 
@@ -281,7 +281,7 @@ com amostras do buffer.
 
 **Padrao de escalamento:**
 - `head_dim` = 32 (1M), 64 (10M-350M), 128 (1.3B+)
-- `d_ff` = 4 * d_model (standard) ou SwiGLU (7B+)
+- `d_ff` = 4 * d_model (GELU, up to 350M) ou SwiGLU (7B+)
 - Gradient checkpointing a partir de 1.3B
 - FSDP a partir de 7B
 - Dropout 0.0 a partir de 7B

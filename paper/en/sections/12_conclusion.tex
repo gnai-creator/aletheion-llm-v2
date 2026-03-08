@@ -12,9 +12,13 @@ complete epistemic system as trainable neural modules. The main
 contributions are:
 
 \begin{enumerate}
-    \item \textbf{Intrinsic epistemology}: For the first time, an LLM
-    produces complete epistemic tomography (30+ fields) per token,
-    trained end-to-end with the language model.
+    \item \textbf{Intrinsic epistemology}: To our knowledge, \aletheion{}
+    is the first LLM to produce complete epistemic tomography (30+ fields)
+    per token, trained end-to-end with the language model. While prior work
+    has explored intrinsic uncertainty estimation \cite{gal2016dropout,
+    lakshminarayanan2017simple}, these approaches are limited to scalar
+    confidence or variance estimates and do not produce structured,
+    multi-dimensional epistemic state per token.
 
     \item \textbf{5D Riemannian Manifold}: Tokens are mapped to a
     learned geometric space where geodesic distances define calibrated
@@ -120,5 +124,6 @@ configurations, and training scripts, is available at:
     \texttt{github.com/gnai-creator/aletheion-llm-v2}
 \end{center}
 
-The 354M parameter model can be trained on a single RTX 4090 (24GB VRAM)
-in approximately 8--10 days with 7B tokens from FineWeb-Edu.
+The 354M parameter backbone is trained on 4$\times$ H100 in
+{\raise.17ex\hbox{$\scriptstyle\sim$}}13 hours with 7B tokens from FineWeb-Edu,
+followed by epistemic fine-tuning on a single RTX 4090 (24GB VRAM).

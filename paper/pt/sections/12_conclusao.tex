@@ -12,9 +12,13 @@ um sistema epist\^emico completo como m\'odulos neurais trein\'aveis.
 As principais contribui\c{c}\~oes s\~ao:
 
 \begin{enumerate}
-    \item \textbf{Epistemologia intr\'inseca}: Pela primeira vez, um LLM
-    produz tomografia epist\^emica completa (30+ campos) por token,
-    treinada \textit{end-to-end} com o modelo de linguagem.
+    \item \textbf{Epistemologia intr\'inseca}: At\'e onde sabemos, o
+    \aletheion{} \'e o primeiro LLM a produzir tomografia epist\^emica
+    completa (30+ campos) por token, treinada \textit{end-to-end} com o
+    modelo de linguagem. Trabalhos anteriores exploraram estima\c{c}\~ao
+    de incerteza intr\'inseca \cite{gal2016dropout, lakshminarayanan2017simple},
+    mas limitam-se a estimativas escalares de confian\c{c}a ou vari\^ancia,
+    sem produzir estado epist\^emico estruturado e multidimensional por token.
 
     \item \textbf{Manifold Riemanniano 5D}: Tokens s\~ao mapeados para
     um espa\c{c}o geom\'etrico aprendido onde dist\^ancias geod\'esicas
@@ -123,6 +127,6 @@ no reposit\'orio:
     \texttt{github.com/gnai-creator/aletheion-llm-v2}
 \end{center}
 
-O modelo de 354M par\^ametros pode ser treinado em uma \'unica
-RTX 4090 (24GB VRAM) em aproximadamente 8--10 dias com 7B tokens
-do FineWeb-Edu.
+O backbone de 354M par\^ametros \'e treinado em 4$\times$ H100 em
+~13 horas com 7B tokens do FineWeb-Edu, seguido de fine-tuning
+epist\^emico em uma \'unica RTX 4090 (24GB VRAM).

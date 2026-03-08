@@ -134,10 +134,10 @@ n\~ao degenere durante o treinamento. O segundo termo penaliza alta
 severidade, incentivando o modelo a manter a sa\'ude proativamente ao
 inv\'es de depender de corre\c{c}\~oes.
 
-\subsection{Resultado Emp\'irico: Preven\c{c}\~ao de Colapso}
+\subsection{Evid\^encia Preliminar: Preven\c{c}\~ao de Colapso}
 
-Em simula\c{c}\~oes com o sistema ATIC (predecessor determin\'istico),
-o VI demonstrou:
+Em simula\c{c}\~oes com o sistema ATIC (predecessor determin\'istico, onde
+o VI opera como m\'odulo de corre\c{c}\~ao p\'os-hoc), o VI demonstrou:
 
 \begin{itemize}
     \item Recupera\c{c}\~ao de dimensionalidade efetiva: $D_{\text{eff}}$
@@ -146,5 +146,8 @@ o VI demonstrou:
     \item 3 de 4 indicadores de sa\'ude melhorados
 \end{itemize}
 
-No \aletheion{}, estes mecanismos s\~ao treinados \textit{end-to-end},
-potencialmente superando os resultados do sistema determin\'istico.
+\textbf{Nota:} Estes resultados s\~ao do sistema determin\'istico ATIC,
+n\~ao do treinamento do \aletheion{}. No \aletheion{}, estes mecanismos
+s\~ao treinados \textit{end-to-end}, o que pode gerar din\^amicas
+diferentes. Valida\c{c}\~ao emp\'irica no modelo 354M treinado est\'a em
+andamento (ver \Cref{sec:conclusao}, Trabalhos Futuros).
