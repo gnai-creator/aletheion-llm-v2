@@ -124,6 +124,7 @@ def _wrap_ddp(
         device_ids=[local_rank] if "cuda" in device else None,
         output_device=local_rank if "cuda" in device else None,
         find_unused_parameters=True,  # Necessario para DirectionalField
+        static_graph=True,  # Otimiza para grafos que nao mudam entre iteracoes
     )
 
 
@@ -169,7 +170,9 @@ def _wrap_fsdp(
         )
 
     # Auto wrap policy: shard por TransformerBlock
-    auto_wrap = transformer_auto_wrap_policy(
+    import functools
+    auto_wrap = functools.partial(
+        transformer_auto_wrap_policy,
         transformer_layer_cls={TransformerBlock}
     )
 
@@ -179,6 +182,7 @@ def _wrap_fsdp(
         mixed_precision=mp_policy,
         auto_wrap_policy=auto_wrap,
         device_id=torch.cuda.current_device() if "cuda" in device else None,
+        use_orig_params=True,
     )
 
 
