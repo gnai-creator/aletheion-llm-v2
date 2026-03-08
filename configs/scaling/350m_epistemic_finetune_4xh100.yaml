@@ -1,19 +1,20 @@
-# ~350M params - Fine-tuning epistemico sobre backbone pre-treinado (CE-only)
+# ~350M params - Fine-tuning epistemico em 4x H100 80GB
 #
-# Fase 2: Ativa as 14 losses sobre modelo que ja aprendeu linguagem.
-# O backbone sai do treino 4xH100 com CE ~3.5-4.0.
-# Este config protege o CE enquanto treina o epistemic head.
+# Fase 2: Ativa as 14 losses + tomografia sobre backbone pre-treinado.
+# Roda no mesmo pod do backbone para aproveitar o credito restante.
 #
 # Estrategia:
 #   - lr 3x menor (1e-04) para nao destruir pesos do backbone
 #   - Annealing 3x mais lento (warmup 30%, ramp ate 80%)
-#   - Lambdas epistemicos a 20% do padrao, sobem com o annealing
+#   - Lambdas epistemicos a 10% do padrao, sobem com o annealing
 #   - Lambda CE alto (1.5) para ancorar o backbone
-#   - Gradient checkpointing ON (tomografia usa muita VRAM)
-#   - batch=4 na RTX 4090 (24GB VRAM)
+#   - Gradient checkpointing ON (tomografia usa ~12GB extra por GPU)
+#   - batch=4 por GPU, grad_accum=4 -> effective batch = 4*4*4 = 64
 #
-# Tempo estimado: ~17-34h na RTX 4090 (500M-1B tokens)
-# Custo: $0 (hardware local)
+# Estimativa 4x H100:
+#   Throughput: ~40-60K tok/s (tomografia ativa = 3x mais lento que backbone)
+#   Tempo: ~5-7h para 1B tokens
+#   Custo: ~$35-49 @ $7/hr
 
 # --- Modelo (mesmo do backbone) ---
 vocab_size: 50257
@@ -23,6 +24,9 @@ n_layers: 24
 d_ff: 4096
 max_seq_len: 1024
 dropout: 0.05  # menor que treino original (0.1) - modelo ja generaliza
+
+# --- Tomography ---
+enable_tomography: true  # ATIVA - todas as 14 losses
 
 # --- Training ---
 batch_size: 4
@@ -36,25 +40,20 @@ eval_interval: 500
 early_stopping_patience: 5     # para rapido se CE subir
 save_interval: 500             # checkpoints frequentes para rollback
 
-# --- Tomography ---
-enable_tomography: true  # ATIVA - todas as 14 losses
-
-# --- Performance RTX 4090 ---
+# --- Performance 4x H100 ---
 mixed_precision: bf16
-gradient_accumulation_steps: 16  # effective batch = 4 * 16 = 64
-gradient_checkpointing: true     # obrigatorio - tomografia usa ~12GB extra
+gradient_accumulation_steps: 4  # effective batch = 4 * 4 GPUs * 4 accum = 64
+gradient_checkpointing: true    # obrigatorio - tomografia usa muita VRAM
 compile_model: false
-distributed: false
+distributed: true
+dist_backend: nccl
+fsdp: false                     # DDP suficiente para 350M
 
 # --- Annealing conservador ---
-# Padrao: warmup=0.1, ramp=0.5
-# Fine-tune: warmup=0.3, ramp=0.8 (3x mais lento)
 loss_warmup_fraction: 0.30     # 30% dos steps so CE (protege backbone)
 loss_ramp_fraction: 0.80       # ramp gradual ate 80% dos steps
 
-# --- Lambdas (10% do padrao - primeiro contato da tomografia com backbone formado) ---
-# Comeca em 10% e o annealing sobe gradualmente ate 100% no ramp.
-# Se CE subir >0.1 nos primeiros 500 steps, reduzir para 5%.
+# --- Lambdas (10% do padrao) ---
 lambda_ce: 1.5                 # ALTO - ancora o backbone
 lambda_stp: 0.01               # padrao (ativo desde step 0)
 lambda_varo: 0.01              # padrao: 0.1
@@ -73,15 +72,14 @@ lambda_contrastive: 0.0003     # padrao: 0.003
 # --- Data ---
 data_dir: data/350m_rtx4090
 streaming: false
-num_workers: 4
-prefetch_factor: 2
+num_workers: 8
+prefetch_factor: 4
 
 # --- STP ---
 enable_stp: true
 stp_num_triplets: 1
 
 # --- Continual Learning ---
-# EWC protege pesos criticos do backbone durante fine-tune
 enable_ewc: true
 ewc_lambda: 200.0              # 2x padrao - protege mais o backbone
 ewc_online: true
@@ -94,4 +92,4 @@ replay_mix_ratio: 0.1
 # --- Logging ---
 save_dir: checkpoints/350m_epistemic_finetune
 wandb_project: aletheion-v2-350m
-save_total_limit: 10           # mais checkpoints para analise
+save_total_limit: 10

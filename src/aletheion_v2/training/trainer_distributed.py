@@ -246,7 +246,7 @@ class DistributedTrainer:
 
         # Forward com mixed precision
         with self.amp_context:
-            output = self.model(input_ids, return_tomography=False)
+            output = self.model(input_ids, return_tomography=self.config.enable_tomography)
 
             # Metric tensor G
             G = None
@@ -549,7 +549,7 @@ class DistributedTrainer:
             labels = batch["labels"].to(self.device)
 
             with self.amp_context:
-                output = self.model(input_ids, return_tomography=False)
+                output = self.model(input_ids, return_tomography=self.config.enable_tomography)
                 losses = self.criterion(output.logits, labels)
 
             total_loss += losses["total"].item()

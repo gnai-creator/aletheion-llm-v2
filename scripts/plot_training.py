@@ -1,35 +1,32 @@
 """
 Visualizacao de treinamento AletheionV2.
 
-Gera graficos a partir de logs de treinamento (JSON ou checkpoints).
+Gera graficos a partir de logs de treinamento (texto ou JSON).
 
 Uso:
-    # A partir do log JSON gerado pelo trainer
-    python scripts/plot_training.py --log checkpoints/training_log.json
+    # A partir do log de texto do cloud training
+    python scripts/plot_training.py checkpoints/350m_4xh100/cloud_train.log
 
-    # A partir de multiplos logs (comparacao)
-    python scripts/plot_training.py --log run1/log.json run2/log.json --labels "1M" "10M"
-
-    # Gerar graficos sinteticos de demonstracao
-    python scripts/plot_training.py --demo
+    # A partir de log JSON
+    python scripts/plot_training.py --json checkpoints/training_log.json
 
     # Salvar em diretorio especifico
-    python scripts/plot_training.py --log checkpoints/training_log.json --output plots/
+    python scripts/plot_training.py checkpoints/350m_4xh100/cloud_train.log -o plots/my_run
 """
 
+import re
 import sys
 import json
+import math
 import argparse
 import numpy as np
 from pathlib import Path
-
-sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 try:
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
-    import matplotlib.gridspec as gridspec
+    import matplotlib.ticker as ticker
     HAS_MPL = True
 except ImportError:
     HAS_MPL = False
@@ -37,937 +34,441 @@ except ImportError:
     sys.exit(1)
 
 
-# Paleta de cores consistente
-COLORS = {
-    "loss": "#2196F3",
-    "eval_loss": "#FF9800",
-    "lr": "#4CAF50",
-    "q1": "#9C27B0",
-    "q2": "#E91E63",
-    "confidence": "#00BCD4",
-    "phi": "#FF5722",
-    "vi_severity": "#795548",
-    "temperature": "#607D8B",
-    "perplexity": "#3F51B5",
-    "tokens_per_sec": "#8BC34A",
-    "grad_norm": "#FFC107",
-}
-
+# --- Dark theme ---
 STYLE = {
-    "figure.facecolor": "#1a1a2e",
-    "axes.facecolor": "#16213e",
-    "axes.edgecolor": "#e94560",
-    "axes.labelcolor": "#eee",
-    "text.color": "#eee",
-    "xtick.color": "#aaa",
-    "ytick.color": "#aaa",
-    "grid.color": "#333",
-    "grid.alpha": 0.3,
+    "figure.facecolor": "#0d1117",
+    "axes.facecolor": "#161b22",
+    "axes.edgecolor": "#30363d",
+    "axes.labelcolor": "#c9d1d9",
+    "text.color": "#c9d1d9",
+    "xtick.color": "#8b949e",
+    "ytick.color": "#8b949e",
+    "grid.color": "#21262d",
+    "grid.alpha": 0.8,
+    "font.family": "monospace",
+    "font.size": 11,
 }
 
 
 def apply_style():
-    """Aplica estilo escuro aos graficos."""
     plt.rcParams.update(STYLE)
-    plt.rcParams["font.size"] = 10
-    plt.rcParams["axes.titlesize"] = 12
-    plt.rcParams["axes.labelsize"] = 10
 
 
-def smooth(values, window=10):
-    """Suaviza curva com media movel."""
+def smooth(values, window=20):
     if len(values) < window:
         return values
     kernel = np.ones(window) / window
     return np.convolve(values, kernel, mode="valid")
 
 
-def load_training_log(path):
-    """Carrega log de treinamento JSON."""
-    with open(path) as f:
-        data = json.load(f)
+def parse_text_log(log_path: str):
+    """Extrai metricas do log de texto (cloud_train.log)."""
+    pattern = re.compile(
+        r"step=(\d+)/(\d+)\s+"
+        r"loss=([\d.]+)\s+"
+        r"ce=([\d.]+)\s+"
+        r"stp=([\d.]+)\s+"
+        r"lr=([\d.e+-]+)\s+"
+        r"gnorm=([\d.]+)\s+"
+        r"tok/s=(\d+)\s+"
+        r"tokens=([\d,]+)"
+    )
+
+    data = {
+        "step": [], "total_steps": [],
+        "loss": [], "ce": [], "stp": [],
+        "lr": [], "gnorm": [], "tok_s": [], "tokens": [],
+    }
+
+    with open(log_path) as f:
+        for line in f:
+            m = pattern.search(line)
+            if m:
+                data["step"].append(int(m.group(1)))
+                data["total_steps"].append(int(m.group(2)))
+                data["loss"].append(float(m.group(3)))
+                data["ce"].append(float(m.group(4)))
+                data["stp"].append(float(m.group(5)))
+                data["lr"].append(float(m.group(6)))
+                data["gnorm"].append(float(m.group(7)))
+                data["tok_s"].append(int(m.group(8)))
+                data["tokens"].append(int(m.group(9).replace(",", "")))
+
+    for k in data:
+        data[k] = np.array(data[k])
+
     return data
 
 
-def extract_metrics(log_data):
-    """Extrai metricas de um log de treinamento.
+def parse_json_log(log_path: str):
+    """Carrega log JSON e converte para formato interno."""
+    with open(log_path) as f:
+        raw = json.load(f)
 
-    Suporta dois formatos:
-    1. Lista de dicts (um por step)
-    2. Dict com listas (historico do trainer)
-    """
-    if isinstance(log_data, list):
-        # Formato: [{step, loss, lr, ...}, ...]
-        metrics = {}
-        for entry in log_data:
+    if isinstance(raw, list):
+        data = {}
+        for entry in raw:
             for key, val in entry.items():
-                if key not in metrics:
-                    metrics[key] = []
-                metrics[key].append(val)
-        return metrics
-    elif isinstance(log_data, dict):
-        # Formato: {train_losses: [...], eval_losses: [...], ...}
-        return log_data
+                if key not in data:
+                    data[key] = []
+                data[key].append(val)
+        for k in data:
+            data[k] = np.array(data[k])
+        return data
+    elif isinstance(raw, dict):
+        for k in raw:
+            if isinstance(raw[k], list):
+                raw[k] = np.array(raw[k])
+        return raw
     return {}
 
 
-def plot_loss_curves(metrics, output_dir, label=""):
-    """Grafico 1: Curvas de loss (train + eval)."""
-    fig, ax = plt.subplots(figsize=(12, 6))
-
-    prefix = f"{label} - " if label else ""
-
-    # Train loss
-    if "train_losses" in metrics:
-        losses = metrics["train_losses"]
-        steps = range(len(losses))
-        ax.plot(steps, losses, color=COLORS["loss"], alpha=0.3, linewidth=0.5)
-        if len(losses) > 20:
-            smoothed = smooth(losses, min(50, len(losses) // 5))
-            ax.plot(
-                range(len(smoothed)), smoothed,
-                color=COLORS["loss"], linewidth=2, label="Train Loss (smooth)"
-            )
-        else:
-            ax.plot(steps, losses, color=COLORS["loss"], linewidth=2, label="Train Loss")
-    elif "loss" in metrics:
-        losses = metrics["loss"]
-        steps = metrics.get("step", range(len(losses)))
-        ax.plot(steps, losses, color=COLORS["loss"], alpha=0.3, linewidth=0.5)
-        if len(losses) > 20:
-            smoothed = smooth(losses, min(50, len(losses) // 5))
-            ax.plot(
-                range(len(smoothed)), smoothed,
-                color=COLORS["loss"], linewidth=2, label="Train Loss (smooth)"
-            )
-
-    # Eval loss
-    if "eval_losses" in metrics:
-        evals = metrics["eval_losses"]
-        eval_steps = metrics.get("eval_steps", range(len(evals)))
-        ax.plot(
-            eval_steps, evals,
-            color=COLORS["eval_loss"], linewidth=2, marker="o",
-            markersize=4, label="Eval Loss"
-        )
-
-    ax.set_xlabel("Step")
-    ax.set_ylabel("Loss")
-    ax.set_title(f"{prefix}Curvas de Loss")
-    ax.legend()
-    ax.grid(True)
-
-    fig.tight_layout()
-    fig.savefig(output_dir / "loss_curves.png", dpi=150, bbox_inches="tight")
-    plt.close(fig)
-    print(f"  [OK] loss_curves.png")
+def fmt_step(x, p):
+    return f"{x/1000:.0f}K"
 
 
-def plot_learning_rate(metrics, output_dir, label=""):
-    """Grafico 2: Learning rate schedule."""
-    fig, ax = plt.subplots(figsize=(12, 4))
+def plot_ce_loss(data, out):
+    """CE Loss curve with reference lines."""
+    fig, ax = plt.subplots(figsize=(14, 6))
+    steps = data["step"]
+    total = data["total_steps"][0] if len(data["total_steps"]) > 0 else 106811
+    ce = data["ce"]
 
-    prefix = f"{label} - " if label else ""
+    ax.plot(steps, ce, alpha=0.25, color="#58a6ff", linewidth=0.5)
+    if len(steps) > 20:
+        s = smooth(ce, 20)
+        ax.plot(steps[19:], s, color="#58a6ff", linewidth=2.5, label="CE Loss (smooth)")
 
-    lr_key = "lr" if "lr" in metrics else "learning_rates"
-    if lr_key in metrics:
-        lrs = metrics[lr_key]
-        steps = metrics.get("step", range(len(lrs)))
-        ax.plot(steps, lrs, color=COLORS["lr"], linewidth=2)
-        ax.set_xlabel("Step")
-        ax.set_ylabel("Learning Rate")
-        ax.set_title(f"{prefix}Learning Rate Schedule")
-        ax.grid(True)
-        ax.ticklabel_format(style="scientific", axis="y", scilimits=(0, 0))
-
-    fig.tight_layout()
-    fig.savefig(output_dir / "learning_rate.png", dpi=150, bbox_inches="tight")
-    plt.close(fig)
-    print(f"  [OK] learning_rate.png")
-
-
-def plot_epistemic_metrics(metrics, output_dir, label=""):
-    """Grafico 3: Metricas epistemicas (q1, q2, confidence, phi)."""
-    fig, axes = plt.subplots(2, 2, figsize=(14, 10))
-
-    prefix = f"{label} - " if label else ""
-
-    # Q1 (incerteza aleatoria)
-    ax = axes[0, 0]
-    if "avg_q1" in metrics:
-        vals = metrics["avg_q1"]
-        ax.plot(range(len(vals)), vals, color=COLORS["q1"], linewidth=1.5, alpha=0.5)
-        if len(vals) > 20:
-            s = smooth(vals, min(30, len(vals) // 5))
-            ax.plot(range(len(s)), s, color=COLORS["q1"], linewidth=2)
-    ax.set_title(f"{prefix}Q1 (Incerteza Aleatoria)")
-    ax.set_ylabel("Q1")
-    ax.set_ylim(0, 1)
-    ax.grid(True)
-
-    # Q2 (incerteza epistemica)
-    ax = axes[0, 1]
-    if "avg_q2" in metrics:
-        vals = metrics["avg_q2"]
-        ax.plot(range(len(vals)), vals, color=COLORS["q2"], linewidth=1.5, alpha=0.5)
-        if len(vals) > 20:
-            s = smooth(vals, min(30, len(vals) // 5))
-            ax.plot(range(len(s)), s, color=COLORS["q2"], linewidth=2)
-    ax.set_title(f"{prefix}Q2 (Incerteza Epistemica)")
-    ax.set_ylabel("Q2")
-    ax.set_ylim(0, 1)
-    ax.grid(True)
-
-    # Confidence (MAD)
-    ax = axes[1, 0]
-    if "avg_confidence" in metrics:
-        vals = metrics["avg_confidence"]
-        ax.plot(range(len(vals)), vals, color=COLORS["confidence"], linewidth=1.5, alpha=0.5)
-        if len(vals) > 20:
-            s = smooth(vals, min(30, len(vals) // 5))
-            ax.plot(range(len(s)), s, color=COLORS["confidence"], linewidth=2)
-    ax.set_title(f"{prefix}Confidence (MAD)")
-    ax.set_ylabel("Confidence")
-    ax.set_ylim(0, 1)
-    ax.grid(True)
-
-    # Phi (saude do manifold)
-    ax = axes[1, 1]
-    if "avg_phi" in metrics:
-        vals = metrics["avg_phi"]
-        ax.plot(range(len(vals)), vals, color=COLORS["phi"], linewidth=1.5, alpha=0.5)
-        if len(vals) > 20:
-            s = smooth(vals, min(30, len(vals) // 5))
-            ax.plot(range(len(s)), s, color=COLORS["phi"], linewidth=2)
-    ax.set_title(f"{prefix}Phi (Saude do Manifold)")
-    ax.set_ylabel("Phi")
-    ax.set_ylim(0, 1)
-    ax.grid(True)
-
-    for ax in axes.flat:
-        ax.set_xlabel("Step")
-
-    fig.suptitle(f"{prefix}Metricas Epistemicas", fontsize=14, y=1.02)
-    fig.tight_layout()
-    fig.savefig(output_dir / "epistemic_metrics.png", dpi=150, bbox_inches="tight")
-    plt.close(fig)
-    print(f"  [OK] epistemic_metrics.png")
-
-
-def plot_loss_components(metrics, output_dir, label=""):
-    """Grafico 4: Componentes da loss composta."""
-    fig, ax = plt.subplots(figsize=(12, 6))
-
-    prefix = f"{label} - " if label else ""
-
-    components = {
-        "ce_loss": ("CE Loss", "#2196F3"),
-        "varo_loss": ("VARO Loss", "#9C27B0"),
-        "vi_loss": ("VI Reg", "#FF5722"),
-        "mad_loss": ("MAD Cal", "#00BCD4"),
-        "metric_loss": ("Metric Reg", "#FFC107"),
-        "stp_loss": ("STP", "#E91E63"),
-    }
-
-    found = False
-    for key, (name, color) in components.items():
-        if key in metrics:
-            vals = metrics[key]
-            if len(vals) > 20:
-                s = smooth(vals, min(30, len(vals) // 5))
-                ax.plot(range(len(s)), s, color=color, linewidth=2, label=name)
-            else:
-                ax.plot(range(len(vals)), vals, color=color, linewidth=2, label=name)
-            found = True
-
-    if found:
-        ax.set_xlabel("Step")
-        ax.set_ylabel("Loss")
-        ax.set_title(f"{prefix}Componentes da Loss Composta")
-        ax.legend()
-        ax.grid(True)
-        ax.set_yscale("log")
-
-    fig.tight_layout()
-    fig.savefig(output_dir / "loss_components.png", dpi=150, bbox_inches="tight")
-    plt.close(fig)
-    print(f"  [OK] loss_components.png")
-
-
-def plot_throughput(metrics, output_dir, label=""):
-    """Grafico 5: Throughput (tokens/segundo)."""
-    fig, axes = plt.subplots(1, 2, figsize=(14, 5))
-
-    prefix = f"{label} - " if label else ""
-
-    # Tokens/segundo
-    ax = axes[0]
-    if "tokens_per_sec" in metrics:
-        vals = metrics["tokens_per_sec"]
-        ax.plot(range(len(vals)), vals, color=COLORS["tokens_per_sec"], linewidth=1, alpha=0.5)
-        if len(vals) > 10:
-            s = smooth(vals, min(20, len(vals) // 3))
-            ax.plot(range(len(s)), s, color=COLORS["tokens_per_sec"], linewidth=2)
-        ax.set_ylabel("Tokens/s")
-    ax.set_title(f"{prefix}Throughput")
-    ax.set_xlabel("Step")
-    ax.grid(True)
-
-    # Gradient norm
-    ax = axes[1]
-    if "grad_norm" in metrics:
-        vals = metrics["grad_norm"]
-        ax.plot(range(len(vals)), vals, color=COLORS["grad_norm"], linewidth=1, alpha=0.5)
-        if len(vals) > 10:
-            s = smooth(vals, min(20, len(vals) // 3))
-            ax.plot(range(len(s)), s, color=COLORS["grad_norm"], linewidth=2)
-        ax.set_ylabel("Grad Norm")
-    ax.set_title(f"{prefix}Gradient Norm")
-    ax.set_xlabel("Step")
-    ax.grid(True)
-
-    fig.tight_layout()
-    fig.savefig(output_dir / "throughput.png", dpi=150, bbox_inches="tight")
-    plt.close(fig)
-    print(f"  [OK] throughput.png")
-
-
-def plot_perplexity(metrics, output_dir, label=""):
-    """Grafico 6: Perplexidade."""
-    fig, ax = plt.subplots(figsize=(12, 5))
-
-    prefix = f"{label} - " if label else ""
-
-    # Calcula perplexidade a partir da loss
-    loss_key = "train_losses" if "train_losses" in metrics else "loss"
-    if loss_key in metrics:
-        losses = metrics[loss_key]
-        perp = [np.exp(min(l, 20)) for l in losses]  # cap para evitar overflow
-
-        ax.plot(range(len(perp)), perp, color=COLORS["perplexity"], alpha=0.3, linewidth=0.5)
-        if len(perp) > 20:
-            s = smooth(perp, min(50, len(perp) // 5))
-            ax.plot(range(len(s)), s, color=COLORS["perplexity"], linewidth=2, label="Train PPL")
-
-    if "eval_losses" in metrics:
-        evals = metrics["eval_losses"]
-        eval_perp = [np.exp(min(l, 20)) for l in evals]
-        eval_steps = metrics.get("eval_steps", range(len(evals)))
-        ax.plot(
-            eval_steps, eval_perp,
-            color=COLORS["eval_loss"], linewidth=2, marker="o",
-            markersize=4, label="Eval PPL"
-        )
-
-    ax.set_xlabel("Step")
-    ax.set_ylabel("Perplexidade")
-    ax.set_title(f"{prefix}Perplexidade")
-    ax.legend()
-    ax.grid(True)
-    if ax.get_ylim()[1] > 1000:
-        ax.set_yscale("log")
-
-    fig.tight_layout()
-    fig.savefig(output_dir / "perplexity.png", dpi=150, bbox_inches="tight")
-    plt.close(fig)
-    print(f"  [OK] perplexity.png")
-
-
-def plot_drm_manifold(metrics, output_dir, label=""):
-    """Grafico 7: Metricas do DRM manifold."""
-    fig, axes = plt.subplots(1, 3, figsize=(16, 5))
-
-    prefix = f"{label} - " if label else ""
-
-    # Distancia geodesica media
-    ax = axes[0]
-    if "avg_geodesic_distance" in metrics:
-        vals = metrics["avg_geodesic_distance"]
-        ax.plot(range(len(vals)), vals, color="#E91E63", linewidth=1.5)
-    ax.set_title(f"{prefix}Distancia Geodesica")
-    ax.set_xlabel("Step")
-    ax.set_ylabel("Distancia")
-    ax.grid(True)
-
-    # Dimensao direcional (dim_D)
-    ax = axes[1]
-    if "avg_dim_d" in metrics:
-        vals = metrics["avg_dim_d"]
-        ax.plot(range(len(vals)), vals, color="#9C27B0", linewidth=1.5)
-    ax.set_title(f"{prefix}Dim D (Direcional)")
-    ax.set_xlabel("Step")
-    ax.set_ylabel("dim_D")
-    ax.set_ylim(0, 6)
-    ax.grid(True)
-
-    # VI severity
-    ax = axes[2]
-    if "avg_vi_severity" in metrics:
-        vals = metrics["avg_vi_severity"]
-        ax.plot(range(len(vals)), vals, color=COLORS["vi_severity"], linewidth=1.5)
-    ax.set_title(f"{prefix}VI Severity")
-    ax.set_xlabel("Step")
-    ax.set_ylabel("Severity")
-    ax.set_ylim(0, 1)
-    ax.grid(True)
-
-    fig.tight_layout()
-    fig.savefig(output_dir / "drm_manifold.png", dpi=150, bbox_inches="tight")
-    plt.close(fig)
-    print(f"  [OK] drm_manifold.png")
-
-
-def plot_consciousness(metrics, output_dir, label=""):
-    """Grafico 8: Metricas de consciencia (mood, curiosity, energy, drives)."""
-    fig, axes = plt.subplots(2, 3, figsize=(16, 10))
-    prefix = f"{label} - " if label else ""
-
-    pairs = [
-        (axes[0, 0], "avg_mood", "Mood", "#E91E63"),
-        (axes[0, 1], "avg_curiosity", "Curiosity", "#9C27B0"),
-        (axes[0, 2], "avg_energy", "Energy", "#FF9800"),
-        (axes[1, 0], "drive_curiosity", "Drive: Curiosity", "#00BCD4"),
-        (axes[1, 1], "drive_mastery", "Drive: Mastery", "#4CAF50"),
-        (axes[1, 2], "drive_autonomy", "Drive: Autonomy", "#3F51B5"),
+    # Reference lines
+    refs = [
+        (3.5, "GPT-2 Medium (355M)", "#3fb950"),
+        (3.3, "OPT-350M", "#f0883e"),
     ]
+    for val, label, color in refs:
+        if ce.min() < val + 1.0:
+            ax.axhline(y=val, color=color, linestyle="--", alpha=0.5, linewidth=1)
+            ax.text(steps[1], val + 0.03, label, color=color, fontsize=9, alpha=0.7)
 
-    for ax, key, title, color in pairs:
-        if key in metrics:
-            vals = metrics[key]
-            ax.plot(range(len(vals)), vals, color=color, alpha=0.4, linewidth=0.5)
-            if len(vals) > 20:
-                s = smooth(vals, min(30, len(vals) // 5))
-                ax.plot(range(len(s)), s, color=color, linewidth=2)
-        ax.set_title(f"{prefix}{title}", fontsize=10)
-        ax.set_xlabel("Step")
-        ax.set_ylim(0, 1)
-        ax.grid(True)
+    # AletheionV2 current position
+    current_ce = float(ce[-1])
+    ax.axhline(y=current_ce, color="#ff7b72", linestyle=":", alpha=0.8, linewidth=1.5)
+    ax.text(steps[-1] * 0.98, current_ce + 0.03, f"AletheionV2 350M = {current_ce:.2f}", color="#ff7b72", fontsize=10, fontweight="bold", alpha=0.9, ha="right")
 
-    fig.suptitle(f"{prefix}Consciousness & Drives", fontsize=14, y=1.02)
-    fig.tight_layout()
-    fig.savefig(output_dir / "consciousness.png", dpi=150, bbox_inches="tight")
-    plt.close(fig)
-    print(f"  [OK] consciousness.png")
-
-
-def plot_phi_components(metrics, output_dir, label=""):
-    """Grafico 9: Phi components (dim, disp, ent, conf) + total."""
-    fig, axes = plt.subplots(1, 5, figsize=(20, 4))
-    prefix = f"{label} - " if label else ""
-
-    pairs = [
-        (axes[0], "phi_dim", "Phi Dim", "#F44336"),
-        (axes[1], "phi_disp", "Phi Disp", "#E91E63"),
-        (axes[2], "phi_ent", "Phi Ent", "#9C27B0"),
-        (axes[3], "phi_conf", "Phi Conf", "#673AB7"),
-        (axes[4], "avg_phi", "Phi Total", "#FF5722"),
-    ]
-
-    for ax, key, title, color in pairs:
-        if key in metrics:
-            vals = metrics[key]
-            ax.plot(range(len(vals)), vals, color=color, alpha=0.4, linewidth=0.5)
-            if len(vals) > 20:
-                s = smooth(vals, min(30, len(vals) // 5))
-                ax.plot(range(len(s)), s, color=color, linewidth=2)
-        ax.set_title(title, fontsize=10)
-        ax.set_xlabel("Step")
-        ax.set_ylim(0, 1)
-        ax.grid(True)
-
-    fig.suptitle(f"{prefix}Phi Components (Manifold Health)", fontsize=14, y=1.05)
-    fig.tight_layout()
-    fig.savefig(output_dir / "phi_components.png", dpi=150, bbox_inches="tight")
-    plt.close(fig)
-    print(f"  [OK] phi_components.png")
-
-
-def plot_tier_metrics(metrics, output_dir, label=""):
-    """Grafico 10: Metricas dos tiers 1/2/3."""
-    fig, axes = plt.subplots(3, 4, figsize=(18, 12))
-    prefix = f"{label} - " if label else ""
-
-    # Tier 1
-    tier1 = [
-        (axes[0, 0], "avg_conflict", "Conflict Intensity", "#F44336"),
-        (axes[0, 1], "avg_eidos_weight", "Eidos Weight", "#E91E63"),
-        (axes[0, 2], "avg_mood", "Mood", "#9C27B0"),
-        (axes[0, 3], "avg_energy", "Energy", "#FF9800"),
-    ]
-
-    # Tier 2
-    tier2 = [
-        (axes[1, 0], "avg_task_confidence", "Task Confidence", "#00BCD4"),
-        (axes[1, 1], "avg_ambiguity", "Ambiguity", "#009688"),
-        (axes[1, 2], "avg_plasticity", "Plasticity", "#4CAF50"),
-        (axes[1, 3], "avg_frontier", "Frontier Score", "#8BC34A"),
-    ]
-
-    # Tier 3
-    tier3 = [
-        (axes[2, 0], "avg_psi", "Psi (MOPsi)", "#3F51B5"),
-        (axes[2, 1], "avg_mediated", "Mediated Score", "#2196F3"),
-        (axes[2, 2], "avg_state_gate", "State Gate", "#03A9F4"),
-        (axes[2, 3], "avg_divergence", "Divergence (Meta)", "#607D8B"),
-    ]
-
-    for group_label, items in [("Tier 1", tier1), ("Tier 2", tier2), ("Tier 3", tier3)]:
-        for ax, key, title, color in items:
-            if key in metrics:
-                vals = metrics[key]
-                ax.plot(range(len(vals)), vals, color=color, alpha=0.4, linewidth=0.5)
-                if len(vals) > 20:
-                    s = smooth(vals, min(30, len(vals) // 5))
-                    ax.plot(range(len(s)), s, color=color, linewidth=2)
-            ax.set_title(title, fontsize=9)
-            ax.set_xlabel("Step")
-            ax.grid(True)
-
-    # Labels de tier na margem esquerda
-    for i, lbl in enumerate(["Tier 1: Eidos/Filosofia3/Consciousness",
-                              "Tier 2: Grounding/Plasticity/MPL",
-                              "Tier 3: MOPsi/CausalState/Meta"]):
-        axes[i, 0].set_ylabel(lbl, fontsize=8)
-
-    fig.suptitle(f"{prefix}Extension Module Metrics (Tiers 1-3)", fontsize=14, y=1.02)
-    fig.tight_layout()
-    fig.savefig(output_dir / "tier_metrics.png", dpi=150, bbox_inches="tight")
-    plt.close(fig)
-    print(f"  [OK] tier_metrics.png")
-
-
-def plot_drm_coords(metrics, output_dir, label=""):
-    """Grafico 11: Coordenadas DRM 5D + std."""
-    fig, axes = plt.subplots(2, 3, figsize=(16, 8))
-    prefix = f"{label} - " if label else ""
-
-    coord_colors = ["#F44336", "#E91E63", "#9C27B0", "#3F51B5", "#00BCD4"]
-    for i in range(5):
-        ax = axes[i // 3, i % 3]
-        key = f"drm_coord_{i}"
-        if key in metrics:
-            vals = metrics[key]
-            ax.plot(range(len(vals)), vals, color=coord_colors[i], alpha=0.4, linewidth=0.5)
-            if len(vals) > 20:
-                s = smooth(vals, min(30, len(vals) // 5))
-                ax.plot(range(len(s)), s, color=coord_colors[i], linewidth=2)
-        ax.set_title(f"DRM Coord {i}", fontsize=10)
-        ax.set_xlabel("Step")
-        ax.grid(True)
-
-    # Coord std
-    ax = axes[1, 2]
-    if "drm_coord_std" in metrics:
-        vals = metrics["drm_coord_std"]
-        ax.plot(range(len(vals)), vals, color="#FF9800", alpha=0.4, linewidth=0.5)
-        if len(vals) > 20:
-            s = smooth(vals, min(30, len(vals) // 5))
-            ax.plot(range(len(s)), s, color="#FF9800", linewidth=2)
-    ax.set_title("DRM Coord Std", fontsize=10)
     ax.set_xlabel("Step")
+    ax.set_ylabel("Cross-Entropy Loss")
+    ax.set_title(
+        f"AletheionV2 350M — CE Loss  (step {steps[-1]:,}/{total:,}, {steps[-1]/total*100:.1f}%)",
+        fontsize=14, fontweight="bold"
+    )
     ax.grid(True)
-
-    fig.suptitle(f"{prefix}DRM 5D Manifold Coordinates", fontsize=14, y=1.02)
+    ax.legend(loc="upper right", fontsize=11)
+    ax.xaxis.set_major_formatter(ticker.FuncFormatter(fmt_step))
     fig.tight_layout()
-    fig.savefig(output_dir / "drm_coords.png", dpi=150, bbox_inches="tight")
+    fig.savefig(out / "ce_loss.png", dpi=150)
     plt.close(fig)
-    print(f"  [OK] drm_coords.png")
+    print(f"  [OK] ce_loss.png")
 
 
-def plot_all_losses(metrics, output_dir, label=""):
-    """Grafico 12: Todas as 14 losses individuais."""
-    fig, axes = plt.subplots(3, 5, figsize=(22, 12))
-    prefix = f"{label} - " if label else ""
+def plot_ce_vs_tokens(data, out):
+    """CE Loss vs tokens processed (scaling law view)."""
+    fig, ax = plt.subplots(figsize=(14, 6))
+    tokens_b = data["tokens"] / 1e9
+    ce = data["ce"]
 
-    loss_items = [
-        ("ce_loss", "CE", "#2196F3"),
-        ("stp_loss", "STP", "#E91E63"),
-        ("varo_loss", "VARO", "#9C27B0"),
-        ("vi_loss", "VI", "#FF5722"),
-        ("mad_loss", "MAD", "#00BCD4"),
-        ("metric", "Metric Reg", "#FFC107"),
-        ("eidos", "Eidos", "#F44336"),
-        ("conflict", "Conflict", "#E91E63"),
-        ("consciousness", "Consciousness", "#9C27B0"),
-        ("grounding", "Grounding", "#009688"),
-        ("plasticity", "Plasticity", "#4CAF50"),
-        ("frontier", "Frontier", "#8BC34A"),
-        ("mopsi", "MOPsi", "#3F51B5"),
-        ("contrastive", "Contrastive", "#607D8B"),
-        ("annealing", "Annealing Factor", "#795548"),
+    ax.plot(tokens_b, ce, alpha=0.25, color="#58a6ff", linewidth=0.5)
+    if len(tokens_b) > 20:
+        s = smooth(ce, 20)
+        ax.plot(tokens_b[19:], s, color="#58a6ff", linewidth=2.5, label="CE Loss")
+
+    refs = [
+        (3.5, "GPT-2 Medium (355M)", "#3fb950"),
+        (3.3, "OPT-350M", "#f0883e"),
     ]
+    for val, label, color in refs:
+        if ce.min() < val + 1.0:
+            ax.axhline(y=val, color=color, linestyle="--", alpha=0.5, linewidth=1)
+            ax.text(0.05, val + 0.03, label, color=color, fontsize=9, alpha=0.7)
 
-    for idx, (key, name, color) in enumerate(loss_items):
-        ax = axes[idx // 5, idx % 5]
-        if key in metrics:
-            vals = metrics[key]
-            ax.plot(range(len(vals)), vals, color=color, alpha=0.4, linewidth=0.5)
-            if len(vals) > 20:
-                s = smooth(vals, min(30, len(vals) // 5))
-                ax.plot(range(len(s)), s, color=color, linewidth=2)
-        ax.set_title(name, fontsize=9)
-        ax.set_xlabel("Step")
-        ax.grid(True)
+    # AletheionV2 current position
+    current_ce = float(ce[-1])
+    ax.axhline(y=current_ce, color="#ff7b72", linestyle=":", alpha=0.8, linewidth=1.5)
+    ax.text(tokens_b[-1] * 0.98, current_ce + 0.03, f"AletheionV2 350M = {current_ce:.2f}", color="#ff7b72", fontsize=10, fontweight="bold", alpha=0.9, ha="right")
 
-    fig.suptitle(f"{prefix}All 14 Loss Components + Annealing", fontsize=14, y=1.02)
+    ax.set_xlabel("Tokens (Billions)")
+    ax.set_ylabel("Cross-Entropy Loss")
+    ax.set_title("AletheionV2 350M — CE vs Tokens Processed", fontsize=14, fontweight="bold")
+    ax.grid(True)
+    ax.legend(loc="upper right", fontsize=11)
     fig.tight_layout()
-    fig.savefig(output_dir / "all_losses.png", dpi=150, bbox_inches="tight")
+    fig.savefig(out / "ce_vs_tokens.png", dpi=150)
+    plt.close(fig)
+    print(f"  [OK] ce_vs_tokens.png")
+
+
+def plot_all_losses(data, out):
+    """CE + STP losses on separate axes."""
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(14, 8), height_ratios=[3, 1])
+    steps = data["step"]
+
+    # CE
+    ax1.plot(steps, data["ce"], alpha=0.25, color="#58a6ff", linewidth=0.5)
+    if len(steps) > 20:
+        ax1.plot(steps[19:], smooth(data["ce"], 20), color="#58a6ff", linewidth=2.5, label="CE")
+    ax1.set_ylabel("Cross-Entropy")
+    ax1.set_title("AletheionV2 350M — Training Losses", fontsize=14, fontweight="bold")
+    ax1.grid(True)
+    ax1.legend(loc="upper right")
+    ax1.xaxis.set_major_formatter(ticker.FuncFormatter(fmt_step))
+
+    # STP
+    ax2.plot(steps, data["stp"], alpha=0.25, color="#f0883e", linewidth=0.5)
+    if len(steps) > 20:
+        ax2.plot(steps[19:], smooth(data["stp"], 20), color="#f0883e", linewidth=2.5, label="STP")
+    ax2.set_xlabel("Step")
+    ax2.set_ylabel("STP Loss")
+    ax2.grid(True)
+    ax2.legend(loc="upper right")
+    ax2.xaxis.set_major_formatter(ticker.FuncFormatter(fmt_step))
+
+    fig.tight_layout()
+    fig.savefig(out / "all_losses.png", dpi=150)
     plt.close(fig)
     print(f"  [OK] all_losses.png")
 
 
-def plot_comparison(all_metrics, labels, output_dir):
-    """Grafico 8: Comparacao entre escalas."""
-    fig, axes = plt.subplots(2, 2, figsize=(14, 10))
-
-    colors = plt.cm.viridis(np.linspace(0, 0.9, len(all_metrics)))
-
-    # Loss final por escala
-    ax = axes[0, 0]
-    final_losses = []
-    for i, (m, lbl) in enumerate(zip(all_metrics, labels)):
-        loss_key = "train_losses" if "train_losses" in m else "loss"
-        if loss_key in m:
-            final_losses.append(m[loss_key][-1])
-        else:
-            final_losses.append(0)
-    ax.bar(labels, final_losses, color=colors)
-    ax.set_title("Loss Final por Escala")
-    ax.set_ylabel("Loss")
-    ax.grid(True, axis="y")
-
-    # Perplexidade final por escala
-    ax = axes[0, 1]
-    final_perp = [np.exp(min(l, 20)) for l in final_losses]
-    ax.bar(labels, final_perp, color=colors)
-    ax.set_title("Perplexidade Final por Escala")
-    ax.set_ylabel("Perplexidade")
-    ax.grid(True, axis="y")
-
-    # Curvas de loss sobrepostas
-    ax = axes[1, 0]
-    for i, (m, lbl) in enumerate(zip(all_metrics, labels)):
-        loss_key = "train_losses" if "train_losses" in m else "loss"
-        if loss_key in m:
-            vals = m[loss_key]
-            # Normaliza steps para [0, 1] para comparacao
-            x = np.linspace(0, 1, len(vals))
-            if len(vals) > 20:
-                s = smooth(vals, min(30, len(vals) // 5))
-                x_s = np.linspace(0, 1, len(s))
-                ax.plot(x_s, s, color=colors[i], linewidth=2, label=lbl)
-            else:
-                ax.plot(x, vals, color=colors[i], linewidth=2, label=lbl)
-    ax.set_title("Curvas de Loss Normalizadas")
-    ax.set_xlabel("Progresso (%)")
-    ax.set_ylabel("Loss")
-    ax.legend()
+def plot_lr_schedule(data, out):
+    """Learning rate schedule."""
+    fig, ax = plt.subplots(figsize=(14, 4))
+    ax.plot(data["step"], data["lr"], color="#d2a8ff", linewidth=2)
+    ax.set_xlabel("Step")
+    ax.set_ylabel("Learning Rate")
+    ax.set_title("Learning Rate Schedule (Warmup Cosine)", fontsize=14, fontweight="bold")
     ax.grid(True)
-
-    # Confidence final por escala
-    ax = axes[1, 1]
-    final_conf = []
-    for m in all_metrics:
-        if "avg_confidence" in m:
-            final_conf.append(m["avg_confidence"][-1])
-        else:
-            final_conf.append(0)
-    ax.bar(labels, final_conf, color=colors)
-    ax.set_title("Confidence Final por Escala")
-    ax.set_ylabel("Confidence")
-    ax.set_ylim(0, 1)
-    ax.grid(True, axis="y")
-
-    fig.suptitle("Comparacao entre Escalas", fontsize=14, y=1.02)
+    ax.xaxis.set_major_formatter(ticker.FuncFormatter(fmt_step))
+    ax.yaxis.set_major_formatter(ticker.FuncFormatter(lambda x, p: f"{x:.1e}"))
     fig.tight_layout()
-    fig.savefig(output_dir / "comparison.png", dpi=150, bbox_inches="tight")
+    fig.savefig(out / "lr_schedule.png", dpi=150)
     plt.close(fig)
-    print(f"  [OK] comparison.png")
+    print(f"  [OK] lr_schedule.png")
 
 
-def plot_dashboard(metrics, output_dir, label=""):
-    """Grafico 9: Dashboard completo (tudo em um)."""
-    fig = plt.figure(figsize=(20, 14))
-    gs = gridspec.GridSpec(3, 4, hspace=0.35, wspace=0.3)
-
-    prefix = f"{label} - " if label else ""
-
-    def _plot(ax, key, title, color, ylim=None):
-        if key in metrics:
-            vals = metrics[key]
-            ax.plot(range(len(vals)), vals, color=color, alpha=0.3, linewidth=0.5)
-            if len(vals) > 20:
-                s = smooth(vals, min(30, len(vals) // 5))
-                ax.plot(range(len(s)), s, color=color, linewidth=2)
-        ax.set_title(title, fontsize=10)
-        ax.grid(True)
-        if ylim:
-            ax.set_ylim(ylim)
-
-    # Linha 1: Loss, Perplexidade, LR, Throughput
-    loss_key = "train_losses" if "train_losses" in metrics else "loss"
-    ax = fig.add_subplot(gs[0, 0])
-    _plot(ax, loss_key, "Train Loss", COLORS["loss"])
-
-    ax = fig.add_subplot(gs[0, 1])
-    if loss_key in metrics:
-        perp = [np.exp(min(l, 20)) for l in metrics[loss_key]]
-        metrics["_perp"] = perp
-    _plot(ax, "_perp", "Perplexidade", COLORS["perplexity"])
-
-    ax = fig.add_subplot(gs[0, 2])
-    lr_key = "lr" if "lr" in metrics else "learning_rates"
-    _plot(ax, lr_key, "Learning Rate", COLORS["lr"])
-
-    ax = fig.add_subplot(gs[0, 3])
-    _plot(ax, "tokens_per_sec", "Tokens/s", COLORS["tokens_per_sec"])
-
-    # Linha 2: Q1, Q2, Confidence, Phi
-    ax = fig.add_subplot(gs[1, 0])
-    _plot(ax, "avg_q1", "Q1 (Aleatoria)", COLORS["q1"], (0, 1))
-
-    ax = fig.add_subplot(gs[1, 1])
-    _plot(ax, "avg_q2", "Q2 (Epistemica)", COLORS["q2"], (0, 1))
-
-    ax = fig.add_subplot(gs[1, 2])
-    _plot(ax, "avg_confidence", "Confidence (MAD)", COLORS["confidence"], (0, 1))
-
-    ax = fig.add_subplot(gs[1, 3])
-    _plot(ax, "avg_phi", "Phi (Manifold)", COLORS["phi"], (0, 1))
-
-    # Linha 3: Loss components, Grad norm, DRM, VI
-    ax = fig.add_subplot(gs[2, 0])
-    for key, (name, color) in [
-        ("ce_loss", ("CE", "#2196F3")),
-        ("varo_loss", ("VARO", "#9C27B0")),
-        ("vi_loss", ("VI", "#FF5722")),
-        ("mad_loss", ("MAD", "#00BCD4")),
-    ]:
-        if key in metrics:
-            vals = metrics[key]
-            if len(vals) > 20:
-                s = smooth(vals, min(20, len(vals) // 5))
-                ax.plot(range(len(s)), s, linewidth=1.5, label=name, color=color)
-    ax.set_title("Loss Components", fontsize=10)
-    ax.legend(fontsize=7)
+def plot_grad_norm(data, out):
+    """Gradient norm over time."""
+    fig, ax = plt.subplots(figsize=(14, 4))
+    steps = data["step"]
+    ax.plot(steps, data["gnorm"], alpha=0.25, color="#f778ba", linewidth=0.5)
+    if len(steps) > 20:
+        ax.plot(steps[19:], smooth(data["gnorm"], 20), color="#f778ba", linewidth=2.5, label="Grad Norm (smooth)")
+    ax.set_xlabel("Step")
+    ax.set_ylabel("Gradient Norm")
+    ax.set_title("Gradient Norm", fontsize=14, fontweight="bold")
     ax.grid(True)
-    if any(k in metrics for k in ["ce_loss", "varo_loss"]):
+    ax.legend(loc="upper right")
+    ax.xaxis.set_major_formatter(ticker.FuncFormatter(fmt_step))
+    fig.tight_layout()
+    fig.savefig(out / "grad_norm.png", dpi=150)
+    plt.close(fig)
+    print(f"  [OK] grad_norm.png")
+
+
+def plot_throughput(data, out):
+    """Throughput over time."""
+    fig, ax = plt.subplots(figsize=(14, 4))
+    ax.plot(data["step"], data["tok_s"] / 1000, color="#3fb950", linewidth=2)
+    ax.set_xlabel("Step")
+    ax.set_ylabel("K tokens/s")
+    ax.set_title("Throughput (4x H100 DDP)", fontsize=14, fontweight="bold")
+    ax.grid(True)
+    ax.xaxis.set_major_formatter(ticker.FuncFormatter(fmt_step))
+    ymin = max(0, data["tok_s"].min() / 1000 - 10)
+    ymax = data["tok_s"].max() / 1000 + 10
+    ax.set_ylim(ymin, ymax)
+    fig.tight_layout()
+    fig.savefig(out / "throughput.png", dpi=150)
+    plt.close(fig)
+    print(f"  [OK] throughput.png")
+
+
+def plot_perplexity(data, out):
+    """Perplexity derived from CE loss."""
+    fig, ax = plt.subplots(figsize=(14, 6))
+    steps = data["step"]
+    ppl = np.exp(np.clip(data["ce"], 0, 20))
+
+    ax.plot(steps, ppl, alpha=0.25, color="#bc8cff", linewidth=0.5)
+    if len(steps) > 20:
+        ax.plot(steps[19:], smooth(ppl, 20), color="#bc8cff", linewidth=2.5, label="Train PPL")
+
+    # References
+    refs = [
+        (math.exp(3.5), "GPT-2 Medium ~33", "#3fb950"),
+        (math.exp(3.3), "OPT-350M ~27", "#f0883e"),
+    ]
+    for val, label, color in refs:
+        if ppl.min() < val * 2:
+            ax.axhline(y=val, color=color, linestyle="--", alpha=0.5, linewidth=1)
+            ax.text(steps[1], val * 1.02, label, color=color, fontsize=9, alpha=0.7)
+
+    # AletheionV2 current position
+    current_ppl = float(ppl[-1])
+    ax.axhline(y=current_ppl, color="#ff7b72", linestyle=":", alpha=0.8, linewidth=1.5)
+    ax.text(steps[-1] * 0.98, current_ppl * 1.02, f"AletheionV2 350M = {current_ppl:.1f}", color="#ff7b72", fontsize=10, fontweight="bold", alpha=0.9, ha="right")
+
+    ax.set_xlabel("Step")
+    ax.set_ylabel("Perplexity")
+    ax.set_title("AletheionV2 350M — Train Perplexity", fontsize=14, fontweight="bold")
+    ax.grid(True)
+    ax.legend(loc="upper right")
+    ax.xaxis.set_major_formatter(ticker.FuncFormatter(fmt_step))
+    if ppl.max() / ppl.min() > 50:
+        ax.set_yscale("log")
+    fig.tight_layout()
+    fig.savefig(out / "perplexity.png", dpi=150)
+    plt.close(fig)
+    print(f"  [OK] perplexity.png")
+
+
+def plot_dashboard(data, out):
+    """Single dashboard with all metrics."""
+    fig, axes = plt.subplots(2, 3, figsize=(18, 10))
+    steps = data["step"]
+    total = data["total_steps"][0] if len(data["total_steps"]) > 0 else 106811
+    w = 20
+
+    # CE Loss
+    ax = axes[0, 0]
+    ax.plot(steps, data["ce"], alpha=0.2, color="#58a6ff", linewidth=0.5)
+    if len(steps) > w:
+        ax.plot(steps[w-1:], smooth(data["ce"], w), color="#58a6ff", linewidth=2)
+    ax.set_title("CE Loss", fontsize=12, fontweight="bold")
+    ax.set_ylabel("Loss")
+    ax.grid(True)
+    ax.xaxis.set_major_formatter(ticker.FuncFormatter(fmt_step))
+
+    # STP Loss
+    ax = axes[0, 1]
+    ax.plot(steps, data["stp"], alpha=0.2, color="#f0883e", linewidth=0.5)
+    if len(steps) > w:
+        ax.plot(steps[w-1:], smooth(data["stp"], w), color="#f0883e", linewidth=2)
+    ax.set_title("STP Loss", fontsize=12, fontweight="bold")
+    ax.grid(True)
+    ax.xaxis.set_major_formatter(ticker.FuncFormatter(fmt_step))
+
+    # LR
+    ax = axes[0, 2]
+    ax.plot(steps, data["lr"], color="#d2a8ff", linewidth=2)
+    ax.set_title("Learning Rate", fontsize=12, fontweight="bold")
+    ax.grid(True)
+    ax.xaxis.set_major_formatter(ticker.FuncFormatter(fmt_step))
+    ax.yaxis.set_major_formatter(ticker.FuncFormatter(lambda x, p: f"{x:.0e}"))
+
+    # Perplexity
+    ax = axes[1, 0]
+    ppl = np.exp(np.clip(data["ce"], 0, 20))
+    ax.plot(steps, ppl, alpha=0.2, color="#bc8cff", linewidth=0.5)
+    if len(steps) > w:
+        ax.plot(steps[w-1:], smooth(ppl, w), color="#bc8cff", linewidth=2)
+    ax.set_title("Perplexity", fontsize=12, fontweight="bold")
+    ax.set_ylabel("PPL")
+    ax.set_xlabel("Step")
+    ax.grid(True)
+    ax.xaxis.set_major_formatter(ticker.FuncFormatter(fmt_step))
+    if ppl.max() / ppl.min() > 50:
         ax.set_yscale("log")
 
-    ax = fig.add_subplot(gs[2, 1])
-    _plot(ax, "grad_norm", "Grad Norm", COLORS["grad_norm"])
+    # Grad Norm
+    ax = axes[1, 1]
+    ax.plot(steps, data["gnorm"], alpha=0.2, color="#f778ba", linewidth=0.5)
+    if len(steps) > w:
+        ax.plot(steps[w-1:], smooth(data["gnorm"], w), color="#f778ba", linewidth=2)
+    ax.set_title("Gradient Norm", fontsize=12, fontweight="bold")
+    ax.set_xlabel("Step")
+    ax.grid(True)
+    ax.xaxis.set_major_formatter(ticker.FuncFormatter(fmt_step))
 
-    ax = fig.add_subplot(gs[2, 2])
-    _plot(ax, "avg_geodesic_distance", "Geodesic Dist", "#E91E63")
+    # Throughput
+    ax = axes[1, 2]
+    ax.plot(steps, data["tok_s"] / 1000, color="#3fb950", linewidth=2)
+    ax.set_title("Throughput (K tok/s)", fontsize=12, fontweight="bold")
+    ax.set_xlabel("Step")
+    ax.grid(True)
+    ax.xaxis.set_major_formatter(ticker.FuncFormatter(fmt_step))
+    ymin = max(0, data["tok_s"].min() / 1000 - 10)
+    ymax = data["tok_s"].max() / 1000 + 10
+    ax.set_ylim(ymin, ymax)
 
-    ax = fig.add_subplot(gs[2, 3])
-    _plot(ax, "avg_vi_severity", "VI Severity", COLORS["vi_severity"], (0, 1))
-
-    # Limpa metrica temporaria
-    metrics.pop("_perp", None)
-
-    fig.suptitle(f"{prefix}AletheionV2 Training Dashboard", fontsize=16, y=1.01)
-    fig.savefig(output_dir / "dashboard.png", dpi=150, bbox_inches="tight")
+    fig.suptitle(
+        f"AletheionV2 350M — Training Dashboard  "
+        f"(step {steps[-1]:,}/{total:,} = {steps[-1]/total*100:.1f}%)",
+        fontsize=16, fontweight="bold", y=1.02
+    )
+    fig.tight_layout()
+    fig.savefig(out / "dashboard.png", dpi=150, bbox_inches="tight")
     plt.close(fig)
     print(f"  [OK] dashboard.png")
 
 
-def generate_demo_data(num_steps=2000):
-    """Gera dados sinteticos para demonstracao."""
-    steps = np.arange(num_steps)
-    progress = steps / num_steps
+def print_summary(data):
+    steps = data["step"]
+    total = data["total_steps"][0] if len(data["total_steps"]) > 0 else 106811
+    tokens_b = data["tokens"] / 1e9
 
-    # Loss: decai exponencialmente com ruido
-    base_loss = 10.0 * np.exp(-3.0 * progress) + 2.0
-    noise = np.random.normal(0, 0.1, num_steps) * (1 - 0.5 * progress)
-    train_losses = (base_loss + noise).clip(1.0).tolist()
-
-    # Eval loss (a cada 100 steps)
-    eval_steps = list(range(0, num_steps, 100))
-    eval_losses = [
-        float(10.0 * np.exp(-3.0 * s / num_steps) + 2.1 + np.random.normal(0, 0.05))
-        for s in eval_steps
-    ]
-
-    # LR: warmup + cosine decay
-    warmup = 200
-    lr_max = 3e-4
-    lrs = []
-    for s in steps:
-        if s < warmup:
-            lrs.append(float(lr_max * s / warmup))
-        else:
-            p = (s - warmup) / (num_steps - warmup)
-            lrs.append(float(lr_max * 0.5 * (1 + np.cos(np.pi * p))))
-
-    # Q1: comeca alto, estabiliza
-    q1 = (0.7 - 0.3 * progress + np.random.normal(0, 0.02, num_steps)).clip(0, 1).tolist()
-
-    # Q2: comeca alto, cai conforme modelo aprende
-    q2 = (0.8 - 0.5 * progress + np.random.normal(0, 0.03, num_steps)).clip(0, 1).tolist()
-
-    # Confidence: cresce com treinamento
-    conf = (0.2 + 0.6 * progress + np.random.normal(0, 0.02, num_steps)).clip(0, 1).tolist()
-
-    # Phi: estabiliza acima do critico
-    phi = (0.3 + 0.4 * progress + np.random.normal(0, 0.03, num_steps)).clip(0, 1).tolist()
-
-    # Loss components
-    ce = train_losses
-    varo = (0.5 * np.exp(-2 * progress) + np.random.normal(0, 0.01, num_steps)).clip(0).tolist()
-    vi_loss = (0.3 * np.exp(-1.5 * progress) + np.random.normal(0, 0.005, num_steps)).clip(0).tolist()
-    mad = (0.4 * np.exp(-2.5 * progress) + np.random.normal(0, 0.01, num_steps)).clip(0).tolist()
-
-    # Throughput
-    base_tps = 15000
-    tps = (base_tps + 2000 * np.random.randn(num_steps)).clip(5000).tolist()
-
-    # Grad norm
-    gn = (2.0 * np.exp(-progress) + 0.5 + np.random.normal(0, 0.1, num_steps)).clip(0).tolist()
-
-    # DRM
-    geo_dist = (3.0 - 2.0 * progress + np.random.normal(0, 0.1, num_steps)).clip(0).tolist()
-    dim_d = (1.5 + 2.0 * progress + np.random.normal(0, 0.1, num_steps)).clip(1, 5).tolist()
-    vi_sev = (0.7 - 0.5 * progress + np.random.normal(0, 0.03, num_steps)).clip(0, 1).tolist()
-
-    return {
-        "train_losses": train_losses,
-        "eval_losses": eval_losses,
-        "eval_steps": eval_steps,
-        "learning_rates": lrs,
-        "avg_q1": q1,
-        "avg_q2": q2,
-        "avg_confidence": conf,
-        "avg_phi": phi,
-        "ce_loss": ce,
-        "varo_loss": varo,
-        "vi_loss": vi_loss,
-        "mad_loss": mad,
-        "tokens_per_sec": tps,
-        "grad_norm": gn,
-        "avg_geodesic_distance": geo_dist,
-        "avg_dim_d": dim_d,
-        "avg_vi_severity": vi_sev,
-    }
-
-
-def generate_all_plots(metrics, output_dir, label=""):
-    """Gera todos os graficos."""
-    output_dir = Path(output_dir)
-    output_dir.mkdir(parents=True, exist_ok=True)
-
-    print(f"[PLOT] Gerando graficos em {output_dir}/")
-
-    plot_loss_curves(metrics, output_dir, label)
-    plot_learning_rate(metrics, output_dir, label)
-    plot_epistemic_metrics(metrics, output_dir, label)
-    plot_loss_components(metrics, output_dir, label)
-    plot_throughput(metrics, output_dir, label)
-    plot_perplexity(metrics, output_dir, label)
-    plot_drm_manifold(metrics, output_dir, label)
-    plot_consciousness(metrics, output_dir, label)
-    plot_phi_components(metrics, output_dir, label)
-    plot_tier_metrics(metrics, output_dir, label)
-    plot_drm_coords(metrics, output_dir, label)
-    plot_all_losses(metrics, output_dir, label)
-    plot_dashboard(metrics, output_dir, label)
-
-    print(f"\n[OK] 13 graficos gerados em {output_dir}/")
+    print(f"\n{'='*55}")
+    print(f"  AletheionV2 350M Training Summary")
+    print(f"{'='*55}")
+    print(f"  Steps:       {steps[-1]:,} / {total:,} ({steps[-1]/total*100:.1f}%)")
+    print(f"  Tokens:      {tokens_b[-1]:.2f}B / 7.00B")
+    print(f"  CE (start):  {data['ce'][0]:.4f}")
+    print(f"  CE (now):    {data['ce'][-1]:.4f}")
+    print(f"  CE (min):    {data['ce'].min():.4f}")
+    print(f"  PPL (now):   {math.exp(data['ce'][-1]):.1f}")
+    print(f"  PPL (min):   {math.exp(data['ce'].min()):.1f}")
+    print(f"  STP (avg):   {data['stp'].mean():.4f}")
+    print(f"  LR (now):    {data['lr'][-1]:.2e}")
+    print(f"  Throughput:  {data['tok_s'].mean()/1000:.1f}K tok/s")
+    print(f"  Grad norm:   {data['gnorm'][-1]:.2f} (avg {data['gnorm'].mean():.2f})")
+    print(f"{'='*55}")
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Visualizacao de treinamento AletheionV2")
-    parser.add_argument(
-        "--log", nargs="+", default=[],
-        help="Caminho(s) para log(s) JSON de treinamento"
-    )
-    parser.add_argument(
-        "--labels", nargs="+", default=[],
-        help="Labels para cada log (para comparacao)"
-    )
-    parser.add_argument(
-        "--output", default="plots",
-        help="Diretorio de saida dos graficos"
-    )
-    parser.add_argument(
-        "--demo", action="store_true",
-        help="Gera graficos com dados sinteticos de demonstracao"
-    )
-    parser.add_argument(
-        "--demo-compare", action="store_true",
-        help="Gera graficos de comparacao com dados sinteticos"
-    )
-
+    parser = argparse.ArgumentParser(description="Plot AletheionV2 training curves")
+    parser.add_argument("log", nargs="?", default=None, help="Path to cloud_train.log (text)")
+    parser.add_argument("--json", default=None, help="Path to JSON training log")
+    parser.add_argument("--output", "-o", default="plots/350m_4xh100", help="Output directory")
     args = parser.parse_args()
-    apply_style()
 
-    if args.demo:
-        print("[DEMO] Gerando dados sinteticos...")
-        metrics = generate_demo_data(2000)
-        generate_all_plots(metrics, args.output, label="Demo 125M")
-
-        # Salva dados sinteticos para referencia
-        demo_path = Path(args.output) / "demo_data.json"
-        with open(demo_path, "w") as f:
-            json.dump(metrics, f)
-        print(f"[OK] Dados sinteticos salvos em {demo_path}")
-        return
-
-    if args.demo_compare:
-        print("[DEMO] Gerando dados sinteticos para comparacao...")
-        scales = ["1M", "10M", "50M", "125M"]
-        all_metrics = []
-        for i, scale in enumerate(scales):
-            np.random.seed(42 + i)
-            m = generate_demo_data(500 * (i + 1))
-            # Modelos maiores tem loss menor
-            factor = 1.0 - 0.15 * i
-            m["train_losses"] = [l * factor for l in m["train_losses"]]
-            all_metrics.append(m)
-
-        output_dir = Path(args.output)
-        output_dir.mkdir(parents=True, exist_ok=True)
-        apply_style()
-        plot_comparison(all_metrics, scales, output_dir)
-
-        # Gera dashboard individual para cada escala
-        for m, scale in zip(all_metrics, scales):
-            scale_dir = output_dir / scale
-            scale_dir.mkdir(exist_ok=True)
-            generate_all_plots(m, scale_dir, label=scale)
-
-        print(f"\n[OK] Comparacao + dashboards individuais em {output_dir}/")
-        return
-
-    if not args.log:
-        print("[ERRO] Use --log <arquivo.json> ou --demo para graficos de demonstracao")
-        print("       Use --demo-compare para comparacao entre escalas")
+    if not args.log and not args.json:
+        print("[ERRO] Passe o caminho do log: python scripts/plot_training.py <log>")
         sys.exit(1)
 
-    if len(args.log) == 1:
-        # Log unico
-        metrics = extract_metrics(load_training_log(args.log[0]))
-        label = args.labels[0] if args.labels else ""
-        generate_all_plots(metrics, args.output, label)
+    apply_style()
+
+    if args.json:
+        data = parse_json_log(args.json)
     else:
-        # Multiplos logs (comparacao)
-        all_metrics = []
-        labels = args.labels if args.labels else [
-            Path(p).stem for p in args.log
-        ]
-        for log_path in args.log:
-            m = extract_metrics(load_training_log(log_path))
-            all_metrics.append(m)
+        data = parse_text_log(args.log)
 
-        output_dir = Path(args.output)
-        output_dir.mkdir(parents=True, exist_ok=True)
-        plot_comparison(all_metrics, labels, output_dir)
+    if len(data.get("step", [])) == 0:
+        print("[ERRO] Nenhum step encontrado no log.")
+        sys.exit(1)
 
-        # Graficos individuais tambem
-        for m, lbl in zip(all_metrics, labels):
-            ind_dir = output_dir / lbl
-            ind_dir.mkdir(exist_ok=True)
-            generate_all_plots(m, ind_dir, label=lbl)
+    out = Path(args.output)
+    out.mkdir(parents=True, exist_ok=True)
+
+    print(f"[PARSE] {len(data['step'])} steps parsed")
+    print(f"[PLOT] Gerando graficos em {out}/\n")
+
+    plot_ce_loss(data, out)
+    plot_ce_vs_tokens(data, out)
+    plot_all_losses(data, out)
+    plot_lr_schedule(data, out)
+    plot_grad_norm(data, out)
+    plot_throughput(data, out)
+    plot_perplexity(data, out)
+    plot_dashboard(data, out)
+
+    print_summary(data)
+    print(f"\n  8 plots salvos em {out}/")
 
 
 if __name__ == "__main__":

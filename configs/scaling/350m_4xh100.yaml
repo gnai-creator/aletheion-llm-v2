@@ -34,6 +34,9 @@ eval_interval: 500
 early_stopping_patience: 10
 save_interval: 1000
 
+# --- Tomography ---
+enable_tomography: false  # Disabled for backbone (CE+STP only, 3x throughput)
+
 # --- Performance 4x H100 ---
 mixed_precision: bf16
 gradient_accumulation_steps: 1  # effective batch = 16 * 4 * 1 = 64

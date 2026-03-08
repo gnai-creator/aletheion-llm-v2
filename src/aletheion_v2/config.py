@@ -114,6 +114,9 @@ class AletheionV2Config:
     replay_buffer_size: int = 10000  # Tamanho do buffer em amostras
     replay_mix_ratio: float = 0.1  # Fracao do batch substituida por replay
 
+    # --- Tomography ---
+    enable_tomography: bool = True  # False = CE+STP only (faster, less VRAM)
+
     # --- Loss ---
     lambda_ce: float = 1.0
     lambda_varo: float = 0.1
