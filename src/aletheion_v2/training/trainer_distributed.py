@@ -15,11 +15,13 @@ import os
 import time
 import json
 import math
+import logging
 import torch
 import torch.distributed as dist
 from torch.utils.data import DataLoader
 from typing import Optional, Dict, Any, List
 from pathlib import Path
+from datetime import datetime
 
 from aletheion_v2.config import AletheionV2Config
 from aletheion_v2.core.model import AletheionV2Model
@@ -128,6 +130,7 @@ class DistributedTrainer:
         # Logging
         self.wandb_run = None
         self.tb_writer = None
+        self.file_logger = None
         if self.is_main:
             self._init_logging()
 
@@ -135,6 +138,7 @@ class DistributedTrainer:
         self.save_dir = Path(config.save_dir)
         if self.is_main:
             self.save_dir.mkdir(parents=True, exist_ok=True)
+            self._init_file_logger()
 
     def _create_optimizer(self) -> torch.optim.Optimizer:
         """Cria optimizer com weight decay seletivo.
@@ -185,8 +189,20 @@ class DistributedTrainer:
             except ImportError:
                 print("[WARN] tensorboard nao instalado")
 
+    def _init_file_logger(self) -> None:
+        """Inicializa logger em arquivo texto com todas as metricas."""
+        log_path = self.save_dir / "train.log"
+        self.file_logger = logging.getLogger(f"aletheion_train_{id(self)}")
+        self.file_logger.setLevel(logging.INFO)
+        self.file_logger.handlers.clear()
+        fh = logging.FileHandler(str(log_path), mode="a", encoding="utf-8")
+        fh.setFormatter(logging.Formatter("%(asctime)s | %(message)s"))
+        self.file_logger.addHandler(fh)
+        self.file_logger.info(f"=== Training started: {datetime.now().isoformat()} ===")
+        self.file_logger.info(f"Config: {self.config}")
+
     def _log_metrics(self, metrics: Dict[str, float], step: int) -> None:
-        """Loga metricas."""
+        """Loga metricas em wandb, tensorboard e arquivo."""
         if not self.is_main:
             return
 
@@ -197,6 +213,12 @@ class DistributedTrainer:
         if self.tb_writer:
             for k, v in metrics.items():
                 self.tb_writer.add_scalar(k, v, step)
+
+        # File logger: todas as metricas em formato parseable
+        if self.file_logger:
+            parts = [f"{k}={v:.6f}" if isinstance(v, float) else f"{k}={v}"
+                     for k, v in sorted(metrics.items())]
+            self.file_logger.info(" | ".join(parts))
 
     def _should_save(self) -> bool:
         """Verifica se deve salvar checkpoint."""
@@ -261,23 +283,96 @@ class DistributedTrainer:
             for k, v in losses.items()
         }
 
-        # Extrai metricas epistemicas da tomografia
+        # Extrai TODAS as metricas epistemicas da tomografia
         tomo = output.tomography
         if tomo is not None:
+            # --- Core ---
             if tomo.q1 is not None:
                 metrics["avg_q1"] = tomo.q1.mean().item()
             if tomo.q2 is not None:
                 metrics["avg_q2"] = tomo.q2.mean().item()
             if tomo.confidence is not None:
                 metrics["avg_confidence"] = tomo.confidence.mean().item()
-            if tomo.phi_total is not None:
-                metrics["avg_phi"] = tomo.phi_total.mean().item()
             if tomo.metric_distance is not None:
                 metrics["avg_geodesic_distance"] = tomo.metric_distance.mean().item()
             if tomo.directional_dim is not None:
                 metrics["avg_dim_d"] = tomo.directional_dim.mean().item()
+            if tomo.phi_total is not None:
+                metrics["avg_phi"] = tomo.phi_total.mean().item()
+            if tomo.phi_components is not None:
+                phi_c = tomo.phi_components.mean(dim=(0, 1))  # [4]
+                metrics["phi_dim"] = phi_c[0].item()
+                metrics["phi_disp"] = phi_c[1].item()
+                metrics["phi_ent"] = phi_c[2].item()
+                metrics["phi_conf"] = phi_c[3].item()
             if tomo.vi_severity is not None:
                 metrics["avg_vi_severity"] = tomo.vi_severity.mean().item()
+            if tomo.temperature is not None:
+                metrics["avg_temperature"] = tomo.temperature.mean().item()
+            if tomo.drm_coords is not None:
+                coords = tomo.drm_coords.mean(dim=(0, 1))  # [5]
+                for i in range(min(coords.shape[0], 5)):
+                    metrics[f"drm_coord_{i}"] = coords[i].item()
+                metrics["drm_coord_std"] = tomo.drm_coords.std().item()
+
+            # --- Tier 1: Eidos ---
+            if tomo.eidos_weights is not None:
+                metrics["avg_eidos_weight"] = tomo.eidos_weights.mean().item()
+            if tomo.axis_balance is not None:
+                bal = tomo.axis_balance.mean(dim=(0, 1))  # [5]
+                for i in range(min(bal.shape[0], 5)):
+                    metrics[f"axis_balance_{i}"] = bal[i].item()
+
+            # --- Tier 1: Filosofia3 ---
+            if tomo.conflict_intensity is not None:
+                metrics["avg_conflict"] = tomo.conflict_intensity.mean().item()
+            if tomo.mode_probs is not None:
+                mp = tomo.mode_probs.mean(dim=(0, 1))  # [4]
+                for i in range(min(mp.shape[0], 4)):
+                    metrics[f"mode_prob_{i}"] = mp[i].item()
+
+            # --- Tier 1: Consciousness ---
+            if tomo.mood is not None:
+                metrics["avg_mood"] = tomo.mood.mean().item()
+            if tomo.curiosity is not None:
+                metrics["avg_curiosity"] = tomo.curiosity.mean().item()
+            if tomo.energy is not None:
+                metrics["avg_energy"] = tomo.energy.mean().item()
+            if tomo.drives is not None:
+                dr = tomo.drives.mean(dim=(0, 1))  # [3]
+                metrics["drive_curiosity"] = dr[0].item()
+                metrics["drive_mastery"] = dr[1].item()
+                metrics["drive_autonomy"] = dr[2].item()
+
+            # --- Tier 2: Grounding ---
+            if tomo.task_confidence is not None:
+                metrics["avg_task_confidence"] = tomo.task_confidence.mean().item()
+            if tomo.ambiguity_level is not None:
+                metrics["avg_ambiguity"] = tomo.ambiguity_level.mean().item()
+
+            # --- Tier 2: Plasticity ---
+            if tomo.plasticity_remaining is not None:
+                metrics["avg_plasticity"] = tomo.plasticity_remaining.mean().item()
+            if tomo.gate_value is not None:
+                metrics["avg_gate"] = tomo.gate_value.mean().item()
+
+            # --- Tier 2: MPL ---
+            if tomo.frontier_score is not None:
+                metrics["avg_frontier"] = tomo.frontier_score.mean().item()
+
+            # --- Tier 3: MOPsi ---
+            if tomo.psi is not None:
+                metrics["avg_psi"] = tomo.psi.mean().item()
+            if tomo.mediated_score is not None:
+                metrics["avg_mediated"] = tomo.mediated_score.mean().item()
+
+            # --- Tier 3: CausalState ---
+            if tomo.state_gate is not None:
+                metrics["avg_state_gate"] = tomo.state_gate.mean().item()
+
+            # --- Tier 3: Metacognitive ---
+            if tomo.divergence is not None:
+                metrics["avg_divergence"] = tomo.divergence.mean().item()
 
         return metrics
 
@@ -377,10 +472,11 @@ class DistributedTrainer:
                 if self.is_main:
                     phi_str = f" phi={avg.get('avg_phi', 0):.3f}" if "avg_phi" in avg else ""
                     conf_str = f" conf={avg.get('avg_confidence', 0):.3f}" if "avg_confidence" in avg else ""
+                    stp_str = f" stp={avg.get('stp', 0):.4f}" if avg.get("stp", 0) > 0 else ""
                     print(
                         f"  step={self.global_step}/{self.total_steps} "
                         f"loss={avg.get('total', 0):.4f} "
-                        f"ce={avg.get('ce', 0):.4f} "
+                        f"ce={avg.get('ce', 0):.4f}{stp_str} "
                         f"lr={lr:.2e} "
                         f"gnorm={grad_norm:.2f} "
                         f"tok/s={avg['tokens_per_sec']:.0f}"
@@ -390,6 +486,9 @@ class DistributedTrainer:
 
                 self._log_metrics(avg, self.global_step)
                 history.append(avg)
+                # Incremental save: training_log.json atualizado a cada log_interval
+                if self.is_main and self.global_step % (self.config.log_interval * 10) == 0:
+                    self._save_training_log(history, time.time() - start_time)
                 accum_metrics = {}
                 accum_count = 0
 
@@ -461,6 +560,11 @@ class DistributedTrainer:
         if self.is_main:
             print(f"  [EVAL] loss={avg:.4f} (best={self.best_eval_loss:.4f})")
             self._log_metrics({"eval/loss": avg}, self.global_step)
+            if self.file_logger:
+                self.file_logger.info(
+                    f"[EVAL] step={self.global_step} eval_loss={avg:.6f} "
+                    f"best={self.best_eval_loss:.6f}"
+                )
 
         self.model.train()
         return avg
@@ -565,6 +669,8 @@ class DistributedTrainer:
             log["vi_loss"] = log.pop("vi")
         if "mad" in log:
             log["mad_loss"] = log.pop("mad")
+        if "stp" in log:
+            log["stp_loss"] = log.pop("stp")
         if "lr" in log:
             log["learning_rates"] = log.pop("lr")
 
