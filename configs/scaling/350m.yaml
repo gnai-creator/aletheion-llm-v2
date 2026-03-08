@@ -13,3 +13,10 @@ total_tokens: 7_000_000_000
 mixed_precision: bf16
 gradient_accumulation_steps: 8
 gradient_checkpointing: false
+eval_interval: 500
+early_stopping_patience: 10
+
+# --- STP ---
+enable_stp: true
+lambda_stp: 0.01
+stp_num_triplets: 1

@@ -16,3 +16,10 @@ gradient_checkpointing: true
 distributed: true
 fsdp: true
 fsdp_sharding: full
+eval_interval: 500
+early_stopping_patience: 10
+
+# --- STP ---
+enable_stp: true
+lambda_stp: 0.01
+stp_num_triplets: 1
