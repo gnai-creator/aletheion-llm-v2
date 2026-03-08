@@ -29,7 +29,7 @@ dropout: 0.05  # menor que treino original (0.1) - modelo ja generaliza
 enable_tomography: true  # ATIVA - todas as 14 losses
 
 # --- Training ---
-batch_size: 4
+batch_size: 16
 learning_rate: 0.0001          # 3x menor que backbone (0.0003)
 weight_decay: 0.01
 warmup_steps: 500              # warmup curto - optimizer states ja estabilizados
@@ -42,9 +42,9 @@ save_interval: 500             # checkpoints frequentes para rollback
 
 # --- Performance 4x H100 ---
 mixed_precision: bf16
-gradient_accumulation_steps: 4  # effective batch = 4 * 4 GPUs * 4 accum = 64
+gradient_accumulation_steps: 1  # effective batch = 16 * 4 GPUs * 1 accum = 64
 gradient_checkpointing: true    # obrigatorio - tomografia usa muita VRAM
-compile_model: false
+compile_model: true              # torch.compile para melhor GPU utilization
 distributed: true
 dist_backend: nccl
 fsdp: false                     # DDP suficiente para 350M
@@ -92,4 +92,4 @@ replay_mix_ratio: 0.1
 # --- Logging ---
 save_dir: checkpoints/350m_epistemic_finetune
 wandb_project: aletheion-v2-350m
-save_total_limit: 10
+save_total_limit: 5           # 5 x 4GB = 20GB (cabe no disco de 60GB)

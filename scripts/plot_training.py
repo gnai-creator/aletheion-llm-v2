@@ -71,6 +71,7 @@ def parse_text_log(log_path: str):
         r"lr=([\d.e+-]+)\s+"
         r"gnorm=([\d.]+)\s+"
         r"tok/s=(\d+)\s+"
+        r".*?"
         r"tokens=([\d,]+)"
     )
 
