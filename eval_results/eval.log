@@ -1,0 +1,37 @@
+Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+[DATA] Baixando WikiText-103 test (out-of-distribution)...
+Generating test split:   0%|          | 0/4358 [00:00<?, ? examples/s]Generating test split: 100%|██████████| 4358/4358 [00:00<00:00, 684060.36 examples/s]
+Generating train split:   0%|          | 0/1801350 [00:00<?, ? examples/s]Generating train split:   7%|▋         | 126000/1801350 [00:00<00:01, 1253875.77 examples/s]Generating train split:  15%|█▌        | 275000/1801350 [00:00<00:01, 1318104.99 examples/s]Generating train split:  23%|██▎       | 411000/1801350 [00:00<00:01, 1330492.89 examples/s]Generating train split:  32%|███▏      | 573000/1801350 [00:00<00:00, 1438349.67 examples/s]Generating train split:  43%|████▎     | 775000/1801350 [00:00<00:00, 1393798.91 examples/s]Generating train split:  55%|█████▌    | 996675/1801350 [00:00<00:00, 1421527.35 examples/s]Generating train split:  68%|██████▊   | 1218675/1801350 [00:00<00:00, 1438669.18 examples/s]Generating train split:  76%|███████▌  | 1368675/1801350 [00:00<00:00, 1431449.36 examples/s]Generating train split:  88%|████████▊ | 1587675/1801350 [00:01<00:00, 1438983.74 examples/s]Generating train split:  97%|█████████▋| 1752675/1801350 [00:01<00:00, 1451391.95 examples/s]Generating train split: 100%|██████████| 1801350/1801350 [00:01<00:00, 1420133.43 examples/s]
+Generating validation split:   0%|          | 0/3760 [00:00<?, ? examples/s]Generating validation split: 100%|██████████| 3760/3760 [00:00<00:00, 982346.02 examples/s]
+[DATA] WikiText-103: 286,177 tokens (OOD)
+
+============================================================
+  AVALIACAO EPISTEMICA - AletheionV2 350M (wikitext)
+============================================================
+[LOAD] Carregando /root/aletheion-ckpt/350m_4xh100/step_106000.pt...
+[LOAD] 354,359,946 params, step=106000
+[EVAL] 279 sequences, tomography=ON
+  PPL:          49.15
+  CE Loss:      3.8948
+  ECE:          0.0267
+  MCE:          0.0713  (bin 9: 0.60-0.67)
+  Brier Score:  0.1526
+  Overconf:     92.09%
+  Mean Conf:    0.3778
+  Mean Acc:     0.3516
+  Tomography:
+    q1: 0.5082
+    q2: 0.4963
+    confidence: 0.5865
+    vi_severity: 0.4304
+    temperature: 3.9687
+
+  MCE detail: bin 9 (0.60-0.67), gap=0.0713
+
+  Referencia (350M params):
+  GPT-2 Medium: PPL ~22.8, ECE ~0.10-0.15
+  OPT-350M:     PPL ~22.0, ECE ~0.08-0.12
+  (ECE tipico de LLMs sem calibracao: 0.10-0.20)
+  (ECE apos temperature scaling: 0.03-0.06)
+
+[SAVE] /root/aletheion-eval/backbone_eval.json

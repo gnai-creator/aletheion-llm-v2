@@ -68,6 +68,7 @@ $SSH_CMD "cd ${REPO} && \
         scripts/train_distributed.py \
         --config ${CONFIG} \
         --resume ${CHECKPOINT} \
+        --finetune \
         --data-dir ${DATA_DIR} \
         --override save_dir=${FINETUNE_DIR} \
     > ${FINETUNE_DIR}/finetune.log 2>&1 &

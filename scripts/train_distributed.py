@@ -90,6 +90,7 @@ def main():
     parser = argparse.ArgumentParser(description="Treinamento AletheionV2")
     parser.add_argument("--config", required=True, help="Caminho do YAML de config")
     parser.add_argument("--resume", default="", help="Checkpoint para resume ('auto' detecta o mais recente)")
+    parser.add_argument("--finetune", action="store_true", help="Fine-tune: carrega pesos mas reseta step/optimizer/scheduler")
     parser.add_argument("--data-dir", default="", help="Override do diretorio de dados")
     parser.add_argument("--eval-data-dir", default="", help="Dados de avaliacao")
     parser.add_argument("--override", nargs="*", help="Overrides: key=value")
@@ -184,9 +185,21 @@ def main():
             print("[RESUME] Nenhum checkpoint encontrado, iniciando do zero.")
 
     if resume_path:
-        trainer.load_checkpoint(resume_path)
-        if is_main:
-            print(f"[RESUME] Continuando do step {trainer.global_step}")
+        if args.finetune:
+            # Fine-tune: carrega so os pesos do modelo, reseta tudo mais
+            state = torch.load(resume_path, map_location=trainer.device, weights_only=False)
+            model_state = state.get("model", state.get("model_state_dict", state))
+            cleaned = {}
+            for k, v in model_state.items():
+                k = k.replace("module.", "").replace("_orig_mod.", "")
+                cleaned[k] = v
+            trainer.raw_model.load_state_dict(cleaned, strict=False)
+            if is_main:
+                print(f"[FINETUNE] Pesos carregados de {resume_path} (step resetado para 0)")
+        else:
+            trainer.load_checkpoint(resume_path)
+            if is_main:
+                print(f"[RESUME] Continuando do step {trainer.global_step}")
 
     # Treina
     history = trainer.train()
