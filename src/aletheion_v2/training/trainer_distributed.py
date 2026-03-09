@@ -272,6 +272,18 @@ class DistributedTrainer:
                 loss = loss + ewc_loss
                 losses["ewc"] = ewc_loss * self.config.gradient_accumulation_steps
 
+        # NaN guard: skip backward if loss is NaN to prevent weight corruption
+        if torch.isnan(loss) or torch.isinf(loss):
+            self.optimizer.zero_grad()
+            metrics = {k: float('nan') for k in losses}
+            tomo = output.tomography
+            if tomo is not None:
+                if tomo.confidence is not None:
+                    metrics["avg_conf"] = float('nan')
+                if hasattr(tomo, 'phi') and tomo.phi is not None:
+                    metrics["avg_phi"] = float('nan')
+            return metrics
+
         # Backward
         if self.grad_scaler is not None:
             self.grad_scaler.scale(loss).backward()
@@ -431,6 +443,7 @@ class DistributedTrainer:
         epoch = 0
         data_iter = iter(self.train_loader)
 
+        nan_step = False
         while self.global_step < self.total_steps:
             # Gradient accumulation loop
             for micro_step in range(self.config.gradient_accumulation_steps):
@@ -443,13 +456,26 @@ class DistributedTrainer:
 
                 metrics = self._train_step(batch)
 
+                # Detect NaN step
+                if "nan_fallback" in metrics or (
+                    isinstance(metrics.get("total"), float) and
+                    metrics["total"] != metrics["total"]  # NaN check
+                ):
+                    nan_step = True
+
                 # Acumula metricas
                 for k, v in metrics.items():
                     accum_metrics[k] = accum_metrics.get(k, 0) + v
                 accum_count += 1
 
-            # Optimizer step
-            lr, grad_norm = self._optimizer_step()
+            # Optimizer step (skip if NaN to prevent weight corruption)
+            if nan_step:
+                self.optimizer.zero_grad()
+                lr = self.scheduler.get_last_lr()[0] if self.scheduler else 0
+                grad_norm = 0.0
+                nan_step = False
+            else:
+                lr, grad_norm = self._optimizer_step()
 
             # Atualiza contadores
             self.global_step += 1
