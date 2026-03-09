@@ -160,9 +160,21 @@ class AletheionV2Loss(nn.Module):
         Returns:
             loss: escalar (log condition number)
         """
-        eigenvalues = torch.linalg.eigvalsh(G)
+        # Guard against NaN/Inf in G
+        if torch.isnan(G).any() or torch.isinf(G).any():
+            return torch.tensor(0.0, device=G.device, dtype=G.dtype)
+        # Regularize G to ensure positive definiteness
+        G_reg = G + 1e-4 * torch.eye(G.shape[0], device=G.device, dtype=G.dtype)
+        try:
+            eigenvalues = torch.linalg.eigvalsh(G_reg)
+        except torch._C._LinAlgError:
+            return torch.tensor(0.0, device=G.device, dtype=G.dtype)
+        if torch.isnan(eigenvalues).any():
+            return torch.tensor(0.0, device=G.device, dtype=G.dtype)
+        # Clamp eigenvalues to avoid division by zero or negative
+        eigenvalues = eigenvalues.clamp(min=1e-8)
         # Log condition number
-        kappa = eigenvalues[-1] / (eigenvalues[0] + 1e-10)
+        kappa = eigenvalues[-1] / eigenvalues[0]
         return torch.log(kappa + 1.0)
 
     def _compute_extension_losses(
@@ -388,6 +400,11 @@ class AletheionV2Loss(nn.Module):
 
         # STP (no annealing — active from step 0)
         total = total + self.lambda_stp * stp
+
+        # NaN guard: if total is NaN, fall back to CE-only
+        if torch.isnan(total) or torch.isinf(total):
+            total = self.lambda_ce * ce + self.lambda_stp * stp
+            losses["nan_fallback"] = torch.tensor(1.0, device=ce.device)
 
         losses["total"] = total
 
