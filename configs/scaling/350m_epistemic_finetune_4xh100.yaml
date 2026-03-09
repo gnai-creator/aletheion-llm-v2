@@ -29,7 +29,7 @@ dropout: 0.05  # menor que treino original (0.1) - modelo ja generaliza
 enable_tomography: true  # ATIVA - todas as 14 losses
 
 # --- Training ---
-batch_size: 16
+batch_size: 8
 learning_rate: 0.0001          # 3x menor que backbone (0.0003)
 weight_decay: 0.01
 warmup_steps: 500              # warmup curto - optimizer states ja estabilizados
@@ -42,9 +42,9 @@ save_interval: 500             # checkpoints frequentes para rollback
 
 # --- Performance 4x H100 ---
 mixed_precision: bf16
-gradient_accumulation_steps: 1  # effective batch = 16 * 4 GPUs * 1 accum = 64
+gradient_accumulation_steps: 2  # effective batch = 8 * 4 GPUs * 2 accum = 64
 gradient_checkpointing: true    # obrigatorio - tomografia usa muita VRAM
-compile_model: true              # torch.compile para melhor GPU utilization
+compile_model: false              # true causa OOM/DDP errors com tomografia
 distributed: true
 dist_backend: nccl
 fsdp: false                     # DDP suficiente para 350M
