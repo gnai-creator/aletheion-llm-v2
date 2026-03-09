@@ -471,7 +471,7 @@ class DistributedTrainer:
             # Optimizer step (skip if NaN to prevent weight corruption)
             if nan_step:
                 self.optimizer.zero_grad()
-                lr = self.scheduler.get_last_lr()[0] if self.scheduler else 0
+                lr = self.optimizer.param_groups[0]["lr"]
                 grad_norm = 0.0
                 nan_step = False
             else:
