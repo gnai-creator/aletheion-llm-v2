@@ -248,11 +248,29 @@ class DistributedTrainer:
         with self.amp_context:
             output = self.model(input_ids, return_tomography=self.config.enable_tomography)
 
+            # Sanitize logits — bf16 can produce NaN/Inf on extreme values
+            output.logits = torch.nan_to_num(output.logits, nan=0.0, posinf=1e4, neginf=-1e4)
+
+            # Sanitize tomography tensors
+            if output.tomography is not None:
+                tomo = output.tomography
+                for field in ['q1', 'q2', 'confidence', 'phi_total', 'vi_severity',
+                              'temperature', 'metric_distance', 'directional_dim',
+                              'eidos_weights', 'axis_balance', 'conflict_intensity',
+                              'consciousness_score', 'grounding_score',
+                              'plasticity_score', 'frontier_score', 'mopsi_orientation',
+                              'contrastive_score', 'drm_coords', 'phi_components']:
+                    val = getattr(tomo, field, None)
+                    if val is not None and isinstance(val, torch.Tensor):
+                        setattr(tomo, field, torch.nan_to_num(val, nan=0.0, posinf=1e4, neginf=-1e4))
+
             # Metric tensor G
             G = None
             raw = self.raw_model
             if hasattr(raw, "epistemic_head"):
                 G = raw.epistemic_head.get_metric_tensor()
+                if G is not None:
+                    G = torch.nan_to_num(G, nan=0.0, posinf=1e4, neginf=-1e4)
 
             losses = self.criterion(
                 output.logits, labels,

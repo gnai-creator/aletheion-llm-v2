@@ -379,35 +379,15 @@ class AletheionV2Loss(nn.Module):
         )
         losses.update(ext_losses)
 
-        # --- Total com annealing ---
-        total = self.lambda_ce * ce
-
-        # Core epistemicas
-        total = total + anneal * self.lambda_varo * varo
-        total = total + anneal * self.lambda_vi * vi
-        total = total + anneal * self.lambda_mad * mad
-        total = total + anneal * self.lambda_metric * metric_loss
-
-        # Extensoes (mesmo annealing)
-        total = total + anneal * self.lambda_eidos * ext_losses["eidos"]
-        total = total + anneal * self.lambda_conflict * ext_losses["conflict"]
-        total = total + anneal * self.lambda_consciousness * ext_losses["consciousness"]
-        total = total + anneal * self.lambda_grounding * ext_losses["grounding"]
-        total = total + anneal * self.lambda_plasticity * ext_losses["plasticity"]
-        total = total + anneal * self.lambda_frontier * ext_losses["frontier"]
-        total = total + anneal * self.lambda_mopsi * ext_losses["mopsi"]
-        total = total + anneal * self.lambda_contrastive * ext_losses["contrastive"]
-
-        # STP (no annealing — active from step 0)
-        total = total + self.lambda_stp * stp
-
-        # NaN guard: replace any NaN individual losses with 0 before summing
+        # NaN guard: replace any NaN individual losses with 0 (keep grad chain)
+        _zero = torch.zeros(1, device=ce.device, dtype=ce.dtype, requires_grad=True).squeeze()
         def safe(val):
             if torch.isnan(val) or torch.isinf(val):
-                return torch.tensor(0.0, device=ce.device, dtype=ce.dtype)
+                return _zero
             return val
 
-        total = self.lambda_ce * ce  # CE should never be NaN
+        # --- Total com annealing (all losses wrapped with safe()) ---
+        total = self.lambda_ce * safe(ce)
         total = total + anneal * self.lambda_varo * safe(varo)
         total = total + anneal * self.lambda_vi * safe(vi)
         total = total + anneal * self.lambda_mad * safe(mad)
@@ -420,12 +400,7 @@ class AletheionV2Loss(nn.Module):
         total = total + anneal * self.lambda_frontier * safe(ext_losses["frontier"])
         total = total + anneal * self.lambda_mopsi * safe(ext_losses["mopsi"])
         total = total + anneal * self.lambda_contrastive * safe(ext_losses["contrastive"])
-        total = total + self.lambda_stp * stp
-
-        # Final NaN guard
-        if torch.isnan(total) or torch.isinf(total):
-            total = self.lambda_ce * ce + self.lambda_stp * stp
-            losses["nan_fallback"] = torch.tensor(1.0, device=ce.device)
+        total = total + self.lambda_stp * safe(stp)
 
         losses["total"] = total
 

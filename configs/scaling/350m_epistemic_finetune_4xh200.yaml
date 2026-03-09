@@ -30,7 +30,7 @@ batch_size: 16
 learning_rate: 0.0001
 weight_decay: 0.01
 warmup_steps: 500
-grad_clip: 0.5
+grad_clip: 0.3  # mais agressivo para prevenir NaN em bf16
 total_tokens: 1_000_000_000
 log_interval: 50
 eval_interval: 500
@@ -50,21 +50,21 @@ fsdp: false
 loss_warmup_fraction: 0.30
 loss_ramp_fraction: 0.80
 
-# --- Lambdas (10% do padrao) ---
+# --- Lambdas (2.5% do padrao — ultra conservador para estabilidade bf16) ---
 lambda_ce: 1.5
-lambda_stp: 0.01
-lambda_varo: 0.01
-lambda_vi: 0.001
-lambda_mad: 0.005
-lambda_metric_reg: 0.0001
-lambda_eidos: 0.0005
-lambda_conflict: 0.0005
-lambda_consciousness: 0.0003
-lambda_grounding: 0.0005
-lambda_plasticity: 0.0002
-lambda_frontier: 0.0002
-lambda_mopsi: 0.0003
-lambda_contrastive: 0.0003
+lambda_stp: 0.0025
+lambda_varo: 0.0025
+lambda_vi: 0.00025
+lambda_mad: 0.00125
+lambda_metric_reg: 0.0  # disabled — eigvalsh causes NaN on ill-conditioned G
+lambda_eidos: 0.000125
+lambda_conflict: 0.000125
+lambda_consciousness: 0.000075
+lambda_grounding: 0.000125
+lambda_plasticity: 0.00005
+lambda_frontier: 0.00005
+lambda_mopsi: 0.000075
+lambda_contrastive: 0.000075
 
 # --- Data ---
 data_dir: data/350m_rtx4090
