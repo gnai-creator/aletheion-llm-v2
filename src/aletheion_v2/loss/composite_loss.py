@@ -79,6 +79,27 @@ class AletheionV2Loss(nn.Module):
         self.warmup_fraction = config.loss_warmup_fraction
         self.ramp_fraction = config.loss_ramp_fraction
 
+        # Lambda decay
+        self.lambda_decay_mode = getattr(config, "lambda_decay_mode", "none")
+        self.lambda_decay_k = getattr(config, "lambda_decay_k", 0.0003)
+        # Store initial lambdas for exponential decay (λ(t) = λ_0 × e^(-k*t))
+        self._lambda_init = {
+            "stp": self.lambda_stp,
+            "varo": self.lambda_varo,
+            "vi": self.lambda_vi,
+            "mad": self.lambda_mad,
+            "metric": self.lambda_metric,
+            "eidos": self.lambda_eidos,
+            "conflict": self.lambda_conflict,
+            "consciousness": self.lambda_consciousness,
+            "grounding": self.lambda_grounding,
+            "plasticity": self.lambda_plasticity,
+            "frontier": self.lambda_frontier,
+            "mopsi": self.lambda_mopsi,
+            "contrastive": self.lambda_contrastive,
+        }
+        self._decay_base_step = 0  # set on first forward (for resume)
+
     def _init_extension_losses(self, config: AletheionV2Config) -> None:
         """Instancia losses das extensoes habilitadas."""
         if config.enable_eidos:
@@ -122,6 +143,36 @@ class AletheionV2Loss(nn.Module):
                 ContrastiveRegularization,
             )
             self.contrastive_reg = ContrastiveRegularization()
+
+    def _apply_lambda_decay(self, step: int) -> None:
+        """Exponential decay: λ(t) = λ_0 × e^(-k × t_relative).
+
+        t_relative is steps since training started (or resumed).
+        """
+        if self.lambda_decay_mode != "exponential":
+            return
+        import math
+        # Initialize base step on first call (handles resume)
+        if self._decay_base_step == 0 and step > 0:
+            self._decay_base_step = step
+            return
+        t = step - self._decay_base_step
+        if t <= 0:
+            return
+        factor = math.exp(-self.lambda_decay_k * t)
+        self.lambda_stp = self._lambda_init["stp"] * factor
+        self.lambda_varo = self._lambda_init["varo"] * factor
+        self.lambda_vi = self._lambda_init["vi"] * factor
+        self.lambda_mad = self._lambda_init["mad"] * factor
+        self.lambda_metric = self._lambda_init["metric"] * factor
+        self.lambda_eidos = self._lambda_init["eidos"] * factor
+        self.lambda_conflict = self._lambda_init["conflict"] * factor
+        self.lambda_consciousness = self._lambda_init["consciousness"] * factor
+        self.lambda_grounding = self._lambda_init["grounding"] * factor
+        self.lambda_plasticity = self._lambda_init["plasticity"] * factor
+        self.lambda_frontier = self._lambda_init["frontier"] * factor
+        self.lambda_mopsi = self._lambda_init["mopsi"] * factor
+        self.lambda_contrastive = self._lambda_init["contrastive"] * factor
 
     def _get_annealing_factor(
         self, step: int, total_steps: int
@@ -319,6 +370,9 @@ class AletheionV2Loss(nn.Module):
         """
         B, T, V = logits.shape
         losses = {}
+
+        # Lambda decay
+        self._apply_lambda_decay(step)
 
         # --- Cross-Entropy ---
         ce = self.ce_loss(logits.view(-1, V), labels.view(-1))

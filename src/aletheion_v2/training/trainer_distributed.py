@@ -17,6 +17,7 @@ import json
 import math
 import logging
 import torch
+import torch.nn as nn
 import torch.distributed as dist
 from torch.utils.data import DataLoader
 from typing import Optional, Dict, Any, List
@@ -67,6 +68,22 @@ class DistributedTrainer:
         # Wrap modelo
         self.model = wrap_model_ddp(model, config, self.device)
         self.raw_model = model  # Referencia sem wrapper
+
+        # Force epistemic head to fp32 (bf16 causes NaN in tomography)
+        if hasattr(model, "epistemic_head"):
+            model.epistemic_head.float()
+            if self.is_main:
+                print("[FP32] epistemic_head forçado para fp32")
+
+        # Force all LayerNorm to fp32 (bf16 accumulation over 24 layers
+        # causes hidden_states overflow — LayerNorm in fp32 prevents this)
+        ln_count = 0
+        for module in model.modules():
+            if isinstance(module, nn.LayerNorm):
+                module.float()
+                ln_count += 1
+        if self.is_main:
+            print(f"[FP32] {ln_count} LayerNorm forçados para fp32")
 
         # Loss
         self.criterion = AletheionV2Loss(config)
@@ -248,29 +265,27 @@ class DistributedTrainer:
         with self.amp_context:
             output = self.model(input_ids, return_tomography=self.config.enable_tomography)
 
-            # Sanitize logits — bf16 can produce NaN/Inf on extreme values
-            output.logits = torch.nan_to_num(output.logits, nan=0.0, posinf=1e4, neginf=-1e4)
-
-            # Sanitize tomography tensors
-            if output.tomography is not None:
-                tomo = output.tomography
-                for field in ['q1', 'q2', 'confidence', 'phi_total', 'vi_severity',
-                              'temperature', 'metric_distance', 'directional_dim',
-                              'eidos_weights', 'axis_balance', 'conflict_intensity',
-                              'consciousness_score', 'grounding_score',
-                              'plasticity_score', 'frontier_score', 'mopsi_orientation',
-                              'contrastive_score', 'drm_coords', 'phi_components']:
-                    val = getattr(tomo, field, None)
-                    if val is not None and isinstance(val, torch.Tensor):
-                        setattr(tomo, field, torch.nan_to_num(val, nan=0.0, posinf=1e4, neginf=-1e4))
+            # Skip step if logits or hidden_states are NaN/Inf/dangerously large
+            hs_bad = (torch.isnan(output.hidden_states).any() or
+                      torch.isinf(output.hidden_states).any())
+            logits_bad = (torch.isnan(output.logits).any() or
+                          torch.isinf(output.logits).any())
+            # Also skip if hidden_states magnitude is dangerously high
+            hs_max = output.hidden_states.abs().max()
+            hs_danger = hs_max > 1000  # Normal range is <100 for d_model=1024
+            if logits_bad or hs_bad or hs_danger:
+                if self.is_main:
+                    print(f"  [SKIP] step~{self.global_step} "
+                          f"logits_bad={logits_bad} hs_bad={hs_bad} "
+                          f"hs_max={hs_max.item():.0f}")
+                self.optimizer.zero_grad()
+                return {"total": float('nan'), "ce": float('nan'), "nan_skipped": 1.0}
 
             # Metric tensor G
             G = None
             raw = self.raw_model
             if hasattr(raw, "epistemic_head"):
                 G = raw.epistemic_head.get_metric_tensor()
-                if G is not None:
-                    G = torch.nan_to_num(G, nan=0.0, posinf=1e4, neginf=-1e4)
 
             losses = self.criterion(
                 output.logits, labels,

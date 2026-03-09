@@ -1,6 +1,8 @@
 # ~350M params - Fine-tuning epistemico em 4x H200 SXM 141GB
 #
-# Fase 2: Ativa as 14 losses + tomografia sobre backbone pre-treinado.
+# Fase 3: Tomografia reativada com epistemic_head em fp32.
+# Backbone em bf16, epistemic_head forcado para fp32 no trainer.
+# Lambdas a 1% do padrao — conservador para primeiro teste fp32.
 #
 # H200 SXM: 141GB VRAM por GPU (vs 80GB H100)
 #   - batch=16 por GPU com folga (~70GB VRAM estimada)
@@ -9,8 +11,7 @@
 #   - effective batch = 16 * 4 * 1 = 64
 #
 # Estimativa 4x H200:
-#   Throughput: ~80-120K tok/s
-#   Tempo: ~2-3h para 1B tokens
+#   Throughput: ~60-90K tok/s (com tomografia)
 #   Custo: ~$29-43 @ $14.36/hr
 
 # --- Modelo (mesmo do backbone) ---
@@ -22,7 +23,7 @@ d_ff: 4096
 max_seq_len: 1024
 dropout: 0.05
 
-# --- Tomography ---
+# --- Tomography (fp32 epistemic head — sem overflow bf16) ---
 enable_tomography: true
 
 # --- Training ---
@@ -50,21 +51,27 @@ fsdp: false
 loss_warmup_fraction: 0.30
 loss_ramp_fraction: 0.80
 
-# --- Lambdas (2.5% do padrao — ultra conservador para estabilidade bf16) ---
+# --- Lambdas (0.1% do padrao — exponential decay cuida do resto) ---
+# λ(t) = λ_0 × e^(-0.0003 × t)
+# Step 0 → 0.1%, Step 5000 → 0.022%, Step 10000 → 0.005%
 lambda_ce: 1.5
-lambda_stp: 0.0025
-lambda_varo: 0.0025
-lambda_vi: 0.00025
-lambda_mad: 0.00125
-lambda_metric_reg: 0.0  # disabled — eigvalsh causes NaN on ill-conditioned G
-lambda_eidos: 0.000125
-lambda_conflict: 0.000125
-lambda_consciousness: 0.000075
-lambda_grounding: 0.000125
-lambda_plasticity: 0.00005
-lambda_frontier: 0.00005
-lambda_mopsi: 0.000075
-lambda_contrastive: 0.000075
+lambda_stp: 0.001
+lambda_varo: 0.001
+lambda_vi: 0.0001
+lambda_mad: 0.0005
+lambda_metric_reg: 0.0  # disabled — eigvalsh instavel
+lambda_eidos: 0.00005
+lambda_conflict: 0.00005
+lambda_consciousness: 0.00003
+lambda_grounding: 0.00005
+lambda_plasticity: 0.00002
+lambda_frontier: 0.00002
+lambda_mopsi: 0.00003
+lambda_contrastive: 0.00003
+
+# --- Lambda Decay (exponential) ---
+lambda_decay_mode: exponential
+lambda_decay_k: 0.0003
 
 # --- Data ---
 data_dir: data/350m_rtx4090
@@ -76,13 +83,13 @@ prefetch_factor: 4
 enable_stp: true
 stp_num_triplets: 1
 
-# --- Continual Learning ---
-enable_ewc: true
+# --- Continual Learning (disabled — saves ~10GB VRAM) ---
+enable_ewc: false
 ewc_lambda: 200.0
 ewc_online: true
 ewc_gamma: 0.9
 ewc_fisher_samples: 256
-enable_replay: true
+enable_replay: false
 replay_buffer_size: 10000
 replay_mix_ratio: 0.1
 

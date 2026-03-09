@@ -133,8 +133,15 @@ class AletheionV2Model(nn.Module):
                 # Isso economiza ~3GB de VRAM no backward.
                 all_attn_weights.append(attn_w.detach())
 
+        # Prevent bf16 overflow accumulation over 24 layers.
+        # Normal hidden_states magnitude is <100 for d_model=1024.
+        # Clamp preserves gradients (straight-through for in-range values).
+        x = x.clamp(-1e4, 1e4)
+
         # Layer norm final
         hidden_states = self.ln_final(x)  # [B, T, d_model]
+        # Safety net: clean any residual NaN/Inf from LayerNorm edge cases
+        hidden_states = torch.nan_to_num(hidden_states, nan=0.0, posinf=1e4, neginf=-1e4)
 
         # LM head
         logits = self.lm_head(hidden_states)  # [B, T, V]
@@ -146,11 +153,22 @@ class AletheionV2Model(nn.Module):
         if return_tomography and all_attn_weights:
             attention_patterns = torch.stack(all_attn_weights, dim=1)
             # [B, n_layers, n_heads, T, T]
-            tomography = self.epistemic_head(
-                hidden_states, attention_patterns,
-                state_vector=state_vector,
-                dream_mode=dream_mode,
-            )
+            # Disable autocast: epistemic head MUST run in fp32.
+            # bf16 causes NaN overflow in tomography computations
+            # (exp, log, matmul with metric tensor G, etc.)
+            # Disable autocast: epistemic head runs in fp32.
+            # Detach hidden_states: epistemic gradients don't flow back
+            # to backbone (prevents NaN from gradient interference).
+            # Attention patterns are already detached (line 134).
+            with torch.autocast(device_type="cuda", enabled=False):
+                hs_fp32 = hidden_states.detach().float()
+                ap_fp32 = attention_patterns.float()
+                sv_fp32 = state_vector.float() if state_vector is not None else None
+                tomography = self.epistemic_head(
+                    hs_fp32, ap_fp32,
+                    state_vector=sv_fp32,
+                    dream_mode=dream_mode,
+                )
 
         return ModelOutput(
             logits=logits,

@@ -1,0 +1,92 @@
+# ~350M params - Fine-tuning epistemico em 5x H200 SXM 141GB - FP32 PURO
+#
+# Fase 3: Tomografia completa em fp32 full (sem mixed precision).
+# fp32 elimina overflow bf16 que causava NaN na tomografia.
+#
+# H200 SXM: 141GB VRAM por GPU
+#   - fp32 usa ~2x mais VRAM que bf16, mas 141GB comporta tranquilo
+#   - batch=12 por GPU (~90GB VRAM estimada em fp32)
+#   - grad_accum=1 (sem overhead de acumulacao)
+#   - gradient_checkpointing OFF (141GB sobra)
+#   - effective batch = 12 * 5 * 1 = 60
+#
+# Estimativa 5x H200 fp32:
+#   Throughput: ~40-60K tok/s
+#   Tempo: ~1-1.5h para 279M tokens restantes
+#   Custo: ~$18-27 @ $17.95/hr
+
+# --- Modelo ---
+vocab_size: 50257
+d_model: 1024
+n_heads: 16
+n_layers: 24
+d_ff: 4096
+max_seq_len: 1024
+dropout: 0.05
+
+# --- Tomography ---
+enable_tomography: true
+
+# --- Training ---
+batch_size: 12
+learning_rate: 0.00005  # lower for stability in fp32 fine-tuning
+weight_decay: 0.01
+warmup_steps: 100
+grad_clip: 1.0  # fp32 doesn't need aggressive clipping
+total_tokens: 1_000_000_000
+log_interval: 50
+eval_interval: 500
+early_stopping_patience: 5
+save_interval: 500
+
+# --- Performance 5x H200 fp32 ---
+mixed_precision: "no"
+gradient_accumulation_steps: 1  # effective batch = 12 * 5 GPUs * 1 = 60
+gradient_checkpointing: false   # 141GB VRAM = sem necessidade
+compile_model: false            # DDP incompativel com tomografia
+distributed: true
+dist_backend: nccl
+fsdp: false
+
+# --- Annealing ---
+loss_warmup_fraction: 0.30
+loss_ramp_fraction: 0.80
+
+# --- Lambdas (10% do padrao — fp32 pode aguentar mais) ---
+lambda_ce: 1.5
+lambda_stp: 0.01
+lambda_varo: 0.01
+lambda_vi: 0.001
+lambda_mad: 0.005
+lambda_metric_reg: 0.001  # fp32 handles eigvalsh fine
+lambda_eidos: 0.0005
+lambda_conflict: 0.0005
+lambda_consciousness: 0.0003
+lambda_grounding: 0.0005
+lambda_plasticity: 0.0002
+lambda_frontier: 0.0002
+lambda_mopsi: 0.0003
+lambda_contrastive: 0.0003
+
+# --- Lambda Decay (exponential) ---
+lambda_decay_mode: exponential
+lambda_decay_k: 0.0003
+
+# --- Data ---
+data_dir: data/350m_rtx4090
+streaming: false
+num_workers: 8
+prefetch_factor: 4
+
+# --- STP ---
+enable_stp: true
+stp_num_triplets: 1
+
+# --- Continual Learning ---
+enable_ewc: false
+enable_replay: false
+
+# --- Logging ---
+save_dir: checkpoints/350m_epistemic_finetune
+wandb_project: aletheion-v2-350m
+save_total_limit: 5

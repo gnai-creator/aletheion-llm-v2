@@ -136,6 +136,10 @@ class AletheionV2Config:
     stp_num_triplets: int = 1  # Triplets amostrados por step
     loss_warmup_fraction: float = 0.1  # Fracao do treino so com CE
     loss_ramp_fraction: float = 0.5  # Ramp linear ate aqui
+    lambda_decay_mode: str = "none"  # "none", "exponential"
+    lambda_decay_k: float = 0.0003  # e^(-k*t) decay constant
+    lambda_decay_factor: float = 1.0  # Legacy: discrete decay factor
+    lambda_decay_interval: int = 0  # Legacy: discrete decay interval
 
     # --- Training ---
     learning_rate: float = 3e-4
