@@ -28,11 +28,11 @@ dropout: 0.05
 enable_tomography: true
 
 # --- Training ---
-batch_size: 12
+batch_size: 14
 learning_rate: 0.00005  # lower for stability in fp32 fine-tuning
 weight_decay: 0.01
 warmup_steps: 100
-grad_clip: 1.0  # fp32 doesn't need aggressive clipping
+grad_clip: 0.5  # reduced from 1.0 after NaN at step ~11313
 total_tokens: 1_000_000_000
 log_interval: 50
 eval_interval: 500

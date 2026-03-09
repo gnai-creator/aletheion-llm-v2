@@ -432,17 +432,34 @@ class DistributedTrainer:
             grad_norm = torch.nn.utils.clip_grad_norm_(
                 self.model.parameters(), self.config.grad_clip
             )
+            gn = grad_norm.item() if isinstance(grad_norm, torch.Tensor) else float(grad_norm)
+            if not math.isfinite(gn):
+                # NaN/Inf grad norm: skip optimizer step to prevent weight corruption.
+                # clip_grad_norm_ with NaN norm makes ALL grads NaN — must discard.
+                self.optimizer.zero_grad(set_to_none=True)
+                lr = self.scheduler.step()
+                if self.is_main:
+                    print(f"  [SKIP-GRAD] grad_norm={gn}, skipping optimizer step")
+                return lr, gn
             self.grad_scaler.step(self.optimizer)
             self.grad_scaler.update()
         else:
             grad_norm = torch.nn.utils.clip_grad_norm_(
                 self.model.parameters(), self.config.grad_clip
             )
+            gn = grad_norm.item() if isinstance(grad_norm, torch.Tensor) else float(grad_norm)
+            if not math.isfinite(gn):
+                # NaN/Inf grad norm: skip optimizer step to prevent weight corruption.
+                # clip_grad_norm_ with NaN norm makes ALL grads NaN — must discard.
+                self.optimizer.zero_grad(set_to_none=True)
+                lr = self.scheduler.step()
+                if self.is_main:
+                    print(f"  [SKIP-GRAD] grad_norm={gn}, skipping optimizer step")
+                return lr, gn
             self.optimizer.step()
 
         self.optimizer.zero_grad(set_to_none=True)
         lr = self.scheduler.step()
-        gn = grad_norm.item() if isinstance(grad_norm, torch.Tensor) else float(grad_norm)
         return lr, gn
 
     def train(self) -> Dict[str, Any]:

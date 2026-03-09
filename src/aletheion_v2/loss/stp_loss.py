@@ -44,7 +44,16 @@ def stp_loss(
         hs = hidden_states[:, s]  # [B, D]
         hr = hidden_states[:, r]  # [B, D]
         ht = hidden_states[:, t]  # [B, D]
-        cos = F.cosine_similarity(ht - hr, hr - hs, dim=-1)  # [B]
+        d1 = ht - hr
+        d2 = hr - hs
+        # Skip triplet if either difference vector has near-zero norm —
+        # cosine_similarity divides by norms, producing NaN gradients
+        # when norms approach zero.
+        n1 = d1.norm(dim=-1, keepdim=True)
+        n2 = d2.norm(dim=-1, keepdim=True)
+        if (n1 < 1e-6).any() or (n2 < 1e-6).any():
+            continue
+        cos = F.cosine_similarity(d1, d2, dim=-1)  # [B]
         total = total + (1.0 - cos.mean())
 
     return total / num_triplets

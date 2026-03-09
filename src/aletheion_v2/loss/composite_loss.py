@@ -201,32 +201,30 @@ class AletheionV2Loss(nn.Module):
         return progress
 
     def metric_regularization(self, G: torch.Tensor) -> torch.Tensor:
-        """Regularizacao do condition number de G.
+        """Regularizacao do tensor metrico G.
 
-        Penaliza G muito anisotropico (eigenvalues muito diferentes).
+        Penaliza G muito anisotropico. Uses Frobenius-based penalty instead
+        of eigvalsh backward (which produces NaN gradients when eigenvalues
+        are close together — a known numerical instability).
 
         Args:
             G: [D, D] tensor metrico
 
         Returns:
-            loss: escalar (log condition number)
+            loss: escalar
         """
         # Guard against NaN/Inf in G
         if torch.isnan(G).any() or torch.isinf(G).any():
             return torch.tensor(0.0, device=G.device, dtype=G.dtype)
-        # Regularize G to ensure positive definiteness
-        G_reg = G + 1e-4 * torch.eye(G.shape[0], device=G.device, dtype=G.dtype)
-        try:
-            eigenvalues = torch.linalg.eigvalsh(G_reg)
-        except torch._C._LinAlgError:
-            return torch.tensor(0.0, device=G.device, dtype=G.dtype)
-        if torch.isnan(eigenvalues).any():
-            return torch.tensor(0.0, device=G.device, dtype=G.dtype)
-        # Clamp eigenvalues to avoid division by zero or negative
-        eigenvalues = eigenvalues.clamp(min=1e-8)
-        # Log condition number
-        kappa = eigenvalues[-1] / eigenvalues[0]
-        return torch.log(kappa + 1.0)
+        # Penalize deviation from scaled identity (well-conditioned G).
+        # Diagonal variance → encourages isotropic scaling
+        # Off-diagonal magnitude → encourages diagonal structure
+        diag = G.diagonal()
+        mean_diag = diag.mean()
+        off_diag_sq = G.pow(2).sum() - diag.pow(2).sum()
+        diag_var = (diag - mean_diag).pow(2).mean()
+        off_diag_penalty = off_diag_sq / max(G.shape[0] * (G.shape[0] - 1), 1)
+        return diag_var + off_diag_penalty
 
     def _compute_extension_losses(
         self,
