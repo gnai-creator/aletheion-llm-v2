@@ -336,7 +336,7 @@ def main():
             ax.set_title(label, fontsize=13, fontweight="bold")
             ax.grid(True, axis="y")
 
-        fig.suptitle("AletheionV2 350M vs Baselines — WikiText-103",
+        fig.suptitle("AletheionV2 350M vs Baselines — WikiText-103 (OOD)",
                      fontsize=16, fontweight="bold", y=1.03)
         fig.tight_layout()
         fig.savefig(out_dir / "baselines_comparison.png", dpi=150, bbox_inches="tight")
