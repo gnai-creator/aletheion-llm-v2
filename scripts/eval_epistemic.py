@@ -675,8 +675,8 @@ def main():
 
         # Referencia
         print("\n  Referencia (350M params):")
-        print("  GPT-2 Medium: PPL ~22.8, ECE ~0.10-0.15")
-        print("  OPT-350M:     PPL ~22.0, ECE ~0.08-0.12")
+        print("  GPT-2 Medium: PPL ~21.4, ECE ~0.023 (measured)")
+        print("  OPT-350M:     PPL ~24.8, ECE ~0.024 (measured)")
         print("  (ECE tipico de LLMs sem calibracao: 0.10-0.20)")
         print("  (ECE apos temperature scaling: 0.03-0.06)")
 

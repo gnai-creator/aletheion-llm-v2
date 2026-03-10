@@ -1,0 +1,321 @@
+{
+  "timestamp": "2026-03-09 21:00:57",
+  "eval_dataset": "wikitext",
+  "note": "ECE/Brier measured on out-of-distribution data (WikiText-103 test). Model trained on FineWeb-Edu.",
+  "backbone": {
+    "perplexity": 49.0,
+    "ce_loss": 3.8919,
+    "ece": 0.0261,
+    "mce": 0.0829,
+    "mce_bin": 10,
+    "mce_bin_range": "0.67-0.73",
+    "brier_score": 0.1537,
+    "overconfidence_ratio": 0.9196,
+    "mean_confidence": 0.3788,
+    "mean_accuracy": 0.3538,
+    "total_tokens": 285696,
+    "calibration_bins": [
+      {
+        "bin": 0,
+        "lo": 0.0,
+        "hi": 0.0667,
+        "count": 22976,
+        "acc": 0.0494,
+        "conf": 0.0429,
+        "gap": 0.0065
+      },
+      {
+        "bin": 1,
+        "lo": 0.0667,
+        "hi": 0.1333,
+        "count": 39517,
+        "acc": 0.099,
+        "conf": 0.1003,
+        "gap": 0.0013
+      },
+      {
+        "bin": 2,
+        "lo": 0.1333,
+        "hi": 0.2,
+        "count": 39260,
+        "acc": 0.1576,
+        "conf": 0.1662,
+        "gap": 0.0086
+      },
+      {
+        "bin": 3,
+        "lo": 0.2,
+        "hi": 0.2667,
+        "count": 33427,
+        "acc": 0.2144,
+        "conf": 0.232,
+        "gap": 0.0177
+      },
+      {
+        "bin": 4,
+        "lo": 0.2667,
+        "hi": 0.3333,
+        "count": 26402,
+        "acc": 0.2711,
+        "conf": 0.2986,
+        "gap": 0.0275
+      },
+      {
+        "bin": 5,
+        "lo": 0.3333,
+        "hi": 0.4,
+        "count": 20601,
+        "acc": 0.3325,
+        "conf": 0.3653,
+        "gap": 0.0328
+      },
+      {
+        "bin": 6,
+        "lo": 0.4,
+        "hi": 0.4667,
+        "count": 16238,
+        "acc": 0.3923,
+        "conf": 0.432,
+        "gap": 0.0397
+      },
+      {
+        "bin": 7,
+        "lo": 0.4667,
+        "hi": 0.5333,
+        "count": 12800,
+        "acc": 0.4511,
+        "conf": 0.4989,
+        "gap": 0.0478
+      },
+      {
+        "bin": 8,
+        "lo": 0.5333,
+        "hi": 0.6,
+        "count": 10390,
+        "acc": 0.5092,
+        "conf": 0.5655,
+        "gap": 0.0563
+      },
+      {
+        "bin": 9,
+        "lo": 0.6,
+        "hi": 0.6667,
+        "count": 8707,
+        "acc": 0.5646,
+        "conf": 0.6325,
+        "gap": 0.0679
+      },
+      {
+        "bin": 10,
+        "lo": 0.6667,
+        "hi": 0.7333,
+        "count": 7770,
+        "acc": 0.6162,
+        "conf": 0.6991,
+        "gap": 0.0829
+      },
+      {
+        "bin": 11,
+        "lo": 0.7333,
+        "hi": 0.8,
+        "count": 7050,
+        "acc": 0.695,
+        "conf": 0.7665,
+        "gap": 0.0715
+      },
+      {
+        "bin": 12,
+        "lo": 0.8,
+        "hi": 0.8667,
+        "count": 7176,
+        "acc": 0.7717,
+        "conf": 0.8342,
+        "gap": 0.0625
+      },
+      {
+        "bin": 13,
+        "lo": 0.8667,
+        "hi": 0.9333,
+        "count": 8826,
+        "acc": 0.8518,
+        "conf": 0.902,
+        "gap": 0.0502
+      },
+      {
+        "bin": 14,
+        "lo": 0.9333,
+        "hi": 1.0,
+        "count": 24556,
+        "acc": 0.9598,
+        "conf": 0.9777,
+        "gap": 0.018
+      }
+    ],
+    "tomography": {},
+    "checkpoint": "checkpoints/350m_4xh100/step_105000.pt",
+    "step": 105000,
+    "phase": "backbone",
+    "eval_dataset": "wikitext"
+  },
+  "finetuned": {
+    "perplexity": 44.97,
+    "ce_loss": 3.806,
+    "ece": 0.0244,
+    "mce": 0.07,
+    "mce_bin": 9,
+    "mce_bin_range": "0.60-0.67",
+    "brier_score": 0.1527,
+    "overconfidence_ratio": 0.9235,
+    "mean_confidence": 0.3788,
+    "mean_accuracy": 0.355,
+    "total_tokens": 285696,
+    "calibration_bins": [
+      {
+        "bin": 0,
+        "lo": 0.0,
+        "hi": 0.0667,
+        "count": 21853,
+        "acc": 0.0467,
+        "conf": 0.0433,
+        "gap": 0.0034
+      },
+      {
+        "bin": 1,
+        "lo": 0.0667,
+        "hi": 0.1333,
+        "count": 39190,
+        "acc": 0.0977,
+        "conf": 0.1005,
+        "gap": 0.0028
+      },
+      {
+        "bin": 2,
+        "lo": 0.1333,
+        "hi": 0.2,
+        "count": 39456,
+        "acc": 0.1557,
+        "conf": 0.1665,
+        "gap": 0.0108
+      },
+      {
+        "bin": 3,
+        "lo": 0.2,
+        "hi": 0.2667,
+        "count": 34347,
+        "acc": 0.2117,
+        "conf": 0.232,
+        "gap": 0.0203
+      },
+      {
+        "bin": 4,
+        "lo": 0.2667,
+        "hi": 0.3333,
+        "count": 26769,
+        "acc": 0.2731,
+        "conf": 0.2987,
+        "gap": 0.0256
+      },
+      {
+        "bin": 5,
+        "lo": 0.3333,
+        "hi": 0.4,
+        "count": 20866,
+        "acc": 0.3314,
+        "conf": 0.3653,
+        "gap": 0.0339
+      },
+      {
+        "bin": 6,
+        "lo": 0.4,
+        "hi": 0.4667,
+        "count": 16432,
+        "acc": 0.3962,
+        "conf": 0.4321,
+        "gap": 0.0359
+      },
+      {
+        "bin": 7,
+        "lo": 0.4667,
+        "hi": 0.5333,
+        "count": 13019,
+        "acc": 0.4494,
+        "conf": 0.4989,
+        "gap": 0.0495
+      },
+      {
+        "bin": 8,
+        "lo": 0.5333,
+        "hi": 0.6,
+        "count": 10332,
+        "acc": 0.5186,
+        "conf": 0.5655,
+        "gap": 0.0469
+      },
+      {
+        "bin": 9,
+        "lo": 0.6,
+        "hi": 0.6667,
+        "count": 8712,
+        "acc": 0.562,
+        "conf": 0.632,
+        "gap": 0.07
+      },
+      {
+        "bin": 10,
+        "lo": 0.6667,
+        "hi": 0.7333,
+        "count": 7570,
+        "acc": 0.6387,
+        "conf": 0.6993,
+        "gap": 0.0605
+      },
+      {
+        "bin": 11,
+        "lo": 0.7333,
+        "hi": 0.8,
+        "count": 6965,
+        "acc": 0.7052,
+        "conf": 0.7662,
+        "gap": 0.0609
+      },
+      {
+        "bin": 12,
+        "lo": 0.8,
+        "hi": 0.8667,
+        "count": 7010,
+        "acc": 0.7749,
+        "conf": 0.8337,
+        "gap": 0.0588
+      },
+      {
+        "bin": 13,
+        "lo": 0.8667,
+        "hi": 0.9333,
+        "count": 8699,
+        "acc": 0.8615,
+        "conf": 0.902,
+        "gap": 0.0405
+      },
+      {
+        "bin": 14,
+        "lo": 0.9333,
+        "hi": 1.0,
+        "count": 24476,
+        "acc": 0.9656,
+        "conf": 0.9775,
+        "gap": 0.012
+      }
+    ],
+    "tomography": {
+      "q1": 0.5528,
+      "q2": 0.4111,
+      "confidence": 0.3856,
+      "vi_severity": 0.1541,
+      "temperature": 8.7218
+    },
+    "checkpoint": "checkpoints/350m_epistemic_finetune/final.pt",
+    "step": 15258,
+    "phase": "finetuned",
+    "eval_dataset": "wikitext"
+  }
+}
