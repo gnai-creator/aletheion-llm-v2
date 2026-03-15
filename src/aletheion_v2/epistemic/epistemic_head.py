@@ -252,8 +252,8 @@ class EpistemicHead(nn.Module):
         truth_centroid = self.manifold_emb.anchors.truth_centroid
         metric_distance = self.geodesic_dist(coords, truth_centroid, G)
 
-        # MAD: Confidence
-        confidence, d_sq, tau_sq = self.mad_confidence(coords, truth_centroid)
+        # MAD: Confidence (usa tensor metrico G para geometria real)
+        confidence, d_sq, tau_sq = self.mad_confidence(coords, truth_centroid, G)
 
         # VI: Phi field
         phi_components, phi_total = self.phi_field(coords, confidence)

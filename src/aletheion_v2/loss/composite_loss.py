@@ -203,9 +203,15 @@ class AletheionV2Loss(nn.Module):
     def metric_regularization(self, G: torch.Tensor) -> torch.Tensor:
         """Regularizacao do tensor metrico G.
 
-        Penaliza G muito anisotropico. Uses Frobenius-based penalty instead
-        of eigvalsh backward (which produces NaN gradients when eigenvalues
-        are close together — a known numerical instability).
+        Permite que G aprenda estrutura nao-diagonal (correlacoes entre
+        eixos, curvatura real) enquanto mantém condition number limitado
+        para estabilidade numerica.
+
+        Penaliza:
+        1. Condition number alto (ratio max/min eigenvalue)
+        2. Frobenius norm excessiva (previne escala explosiva)
+
+        NAO penaliza off-diagonal — isso permite curvatura real.
 
         Args:
             G: [D, D] tensor metrico
@@ -216,15 +222,25 @@ class AletheionV2Loss(nn.Module):
         # Guard against NaN/Inf in G
         if torch.isnan(G).any() or torch.isinf(G).any():
             return torch.tensor(0.0, device=G.device, dtype=G.dtype)
-        # Penalize deviation from scaled identity (well-conditioned G).
-        # Diagonal variance → encourages isotropic scaling
-        # Off-diagonal magnitude → encourages diagonal structure
+
+        # Frobenius-based: penaliza norma excessiva (mantém escala razoavel)
+        # Usa Frobenius em vez de eigvalsh para evitar NaN no backward
         diag = G.diagonal()
-        mean_diag = diag.mean()
-        off_diag_sq = G.pow(2).sum() - diag.pow(2).sum()
-        diag_var = (diag - mean_diag).pow(2).mean()
-        off_diag_penalty = off_diag_sq / max(G.shape[0] * (G.shape[0] - 1), 1)
-        return diag_var + off_diag_penalty
+        frob_sq = G.pow(2).sum()
+        trace = diag.sum()
+        dim = G.shape[0]
+
+        # Penaliza se Frobenius norm >> trace (indica off-diagonais enormes
+        # ou eigenvalue spread grande). Para G = c*I, frob_sq = c^2*dim
+        # e trace = c*dim, entao frob_sq/trace^2 = 1/dim (minimo).
+        # Penaliza desvio desse minimo, mas nao zera off-diagonais.
+        normalized_frob = frob_sq / (trace.pow(2).clamp(min=1e-8))
+        condition_proxy = (normalized_frob - 1.0 / dim).clamp(min=0.0)
+
+        # Penaliza escala total (previne G explodir)
+        scale_penalty = (trace / dim - 1.0).pow(2)
+
+        return condition_proxy + 0.1 * scale_penalty
 
     def _compute_extension_losses(
         self,

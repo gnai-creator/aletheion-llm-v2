@@ -49,53 +49,42 @@ class MADConfidence(nn.Module):
         self,
         coords: torch.Tensor,
         truth_centroid: torch.Tensor,
+        G: Optional[torch.Tensor] = None,
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """Computa confianca MAD.
+
+        Quando G e fornecido, usa distancia Mahalanobis completa via
+        tensor metrico aprendido (geometria real). Quando G=None,
+        fallback para BayesianTau diagonal (compatibilidade).
 
         Args:
             coords: [B, T, drm_dim] coordenadas no manifold
             truth_centroid: [drm_dim] centroide truth
+            G: [drm_dim, drm_dim] tensor metrico SPD (opcional)
 
         Returns:
             confidence: [B, T, 1] confianca em [0, 1]
-            distance_sq: [B, T, 1] distancia^2 Mahalanobis
+            distance_sq: [B, T, 1] distancia^2
             tau_sq: [drm_dim] ou escalar (para loss de calibracao)
         """
-        # Distancia de Mahalanobis ao quadrado
-        d_sq, tau_sq = self.tau(coords, truth_centroid)
+        tau_sq = self.tau.get_tau_sq()
+
+        if G is not None:
+            # Distancia Mahalanobis completa: d^2 = delta^T @ G @ delta
+            delta = coords - truth_centroid.unsqueeze(0).unsqueeze(0)
+            Gd = torch.matmul(delta, G)  # [B, T, D]
+            d_sq_metric = (Gd * delta).sum(dim=-1, keepdim=True)
+            d_sq_metric = d_sq_metric.clamp(min=0.0)
+
+            # Normalizar por tau medio para manter escala compativel
+            avg_tau_sq = tau_sq.mean() if self.tau.per_axis else tau_sq
+            d_sq = d_sq_metric / avg_tau_sq.clamp(min=1e-6)
+        else:
+            # Fallback: diagonal Mahalanobis via BayesianTau
+            d_sq, tau_sq = self.tau(coords, truth_centroid)
 
         # Gaussian decay: C = exp(-d^2 / 2)
-        # Nota: d_sq ja inclui divisao por tau_sq no BayesianTau
         confidence = torch.exp(-0.5 * d_sq)
 
         return confidence, d_sq, tau_sq
 
-    def confidence_with_metric(
-        self,
-        coords: torch.Tensor,
-        truth_centroid: torch.Tensor,
-        metric_distance: torch.Tensor,
-    ) -> torch.Tensor:
-        """Confianca usando distancia pre-computada pelo metric tensor.
-
-        Util quando a distancia ja foi calculada pelo GeodesicDistance
-        com o tensor metrico completo G.
-
-        Args:
-            coords: [B, T, drm_dim] (nao usado, mantido por interface)
-            truth_centroid: [drm_dim] (nao usado)
-            metric_distance: [B, T, 1] distancia geodesica
-
-        Returns:
-            confidence: [B, T, 1]
-        """
-        tau_sq = self.tau.get_tau_sq()
-        if self.tau.per_axis:
-            # Usa media dos tau_sq para distancia escalar
-            avg_tau_sq = tau_sq.mean()
-        else:
-            avg_tau_sq = tau_sq
-
-        d_sq = metric_distance ** 2
-        confidence = torch.exp(-0.5 * d_sq / avg_tau_sq)
-        return confidence
