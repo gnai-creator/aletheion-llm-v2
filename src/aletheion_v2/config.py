@@ -43,6 +43,8 @@ class AletheionV2Config:
     metric_net_lr_multiplier: float = 10.0  # LR multiplicador para MetricNet
     lambda_metric_smoothness: float = 0.1  # Suavidade do campo G(x)
     metric_max_condition: float = 50.0  # Condition number maximo
+    metric_gravity_dim: int = 0  # Dim do campo gravitacional (0 = desabilitado)
+    gravity_decay: float = 0.99  # Decay temporal do campo gravitacional
 
     # --- Directional Field ---
     dir_num_bins: int = 16  # Bins de entropia de atencao

@@ -133,6 +133,10 @@ class MetricNet(nn.Module):
     G(x) varia com a posicao no manifold, produzindo curvatura
     Riemanniana real (Christoffel nao-zero, Riemann nao-trivial).
 
+    Opcionalmente aceita gravity_field (campo de feedback acumulado)
+    como input adicional. Com gravity_field=None ou zeros, o
+    comportamento e identico ao real_geodesic.
+
     Usa MLP com Tanh (suavidade C1) e Cholesky para garantia SPD.
     Inicializa proximo de identidade (zero init no ultimo layer).
 
@@ -141,6 +145,7 @@ class MetricNet(nn.Module):
         hidden_dim: Dimensao oculta da MLP
         eps: Regularizacao diagonal minima
         n_quad: Pontos de quadratura Gauss-Legendre para integral de linha
+        gravity_dim: Dimensao do campo gravitacional (0 = desabilitado)
     """
 
     def __init__(
@@ -149,15 +154,18 @@ class MetricNet(nn.Module):
         hidden_dim: int = 32,
         eps: float = 1e-6,
         n_quad: int = 5,
+        gravity_dim: int = 0,
     ):
         super().__init__()
         self.dim = dim
         self.eps = eps
         self.n_quad = n_quad
         self.n_chol = dim * (dim + 1) // 2  # 15 para dim=5
+        self.gravity_dim = gravity_dim
 
+        input_dim = dim + gravity_dim
         self.net = nn.Sequential(
-            nn.Linear(dim, hidden_dim),
+            nn.Linear(input_dim, hidden_dim),
             nn.Tanh(),
             nn.Linear(hidden_dim, self.n_chol),
         )
@@ -230,16 +238,32 @@ class MetricNet(nn.Module):
         G = torch.matmul(L, L.transpose(-1, -2))
         return G
 
-    def forward(self, coords: torch.Tensor) -> torch.Tensor:
+    def forward(
+        self,
+        coords: torch.Tensor,
+        gravity_field: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
         """Computa G(x) para cada ponto.
 
         Args:
             coords: [..., dim] coordenadas no manifold
+            gravity_field: [..., gravity_dim] campo gravitacional (opcional).
+                Com None ou zeros, identico ao real_geodesic.
 
         Returns:
             G: [..., dim, dim] tensor metrico SPD por ponto
         """
-        raw = self.net(coords)  # [..., n_chol]
+        if self.gravity_dim > 0:
+            if gravity_field is None:
+                gravity_field = torch.zeros(
+                    *coords.shape[:-1], self.gravity_dim,
+                    device=coords.device, dtype=coords.dtype,
+                )
+            net_input = torch.cat([coords, gravity_field], dim=-1)
+        else:
+            net_input = coords
+
+        raw = self.net(net_input)  # [..., n_chol]
 
         # NaN guard
         if torch.isnan(raw).any():
@@ -254,6 +278,7 @@ class MetricNet(nn.Module):
         self,
         p: torch.Tensor,
         q: torch.Tensor,
+        gravity_field: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         """Distancia via integral de linha com quadratura Gauss-Legendre.
 
@@ -262,17 +287,14 @@ class MetricNet(nn.Module):
 
         onde gamma(t) = p + t*(q - p) (caminho reto).
 
-        Nao e a geodesica verdadeira (que seria mais curta), mas captura
-        a variacao de G ao longo do caminho. Diferenciavel.
-
         Args:
             p: [B, T, dim] pontos de partida
             q: [dim] ou [B, T, dim] pontos de chegada
+            gravity_field: [B, T, gravity_dim] campo gravitacional (opcional)
 
         Returns:
             distance: [B, T, 1] comprimento da integral de linha
         """
-        # Expande q se necessario
         if q.dim() == 1:
             q = q.unsqueeze(0).unsqueeze(0).expand_as(p)
 
@@ -286,13 +308,9 @@ class MetricNet(nn.Module):
             t = self.gl_points[i]
             w = self.gl_weights[i]
 
-            # Ponto ao longo da linha reta
             x_t = p + t * delta  # [B, T, D]
+            G_t = self.forward(x_t, gravity_field=gravity_field)  # [B, T, D, D]
 
-            # G(x_t) nesse ponto
-            G_t = self.forward(x_t)  # [B, T, D, D]
-
-            # delta^T @ G(x_t) @ delta
             Gd = torch.matmul(delta.unsqueeze(-2), G_t).squeeze(-2)  # [B, T, D]
             integrand = (Gd * delta).sum(dim=-1, keepdim=True)  # [B, T, 1]
 
@@ -301,7 +319,7 @@ class MetricNet(nn.Module):
         return total
 
     def forward_constant(self) -> torch.Tensor:
-        """Retorna G avaliado em x=0.5 (centro do manifold).
+        """Retorna G avaliado em x=0.5 (centro do manifold), gravity=0.
 
         Util para backward compatibility e diagnostico.
 
@@ -313,4 +331,4 @@ class MetricNet(nn.Module):
             device=self.net[0].weight.device,
             dtype=self.net[0].weight.dtype,
         )
-        return self.forward(center)
+        return self.forward(center, gravity_field=None)

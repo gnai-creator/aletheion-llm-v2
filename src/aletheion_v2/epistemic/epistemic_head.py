@@ -75,11 +75,13 @@ class EpistemicHead(nn.Module):
         self.use_metric_net = getattr(config, "metric_position_dependent", False)
         if self.use_metric_net:
             # G(x) variavel -- curvatura real
+            # gravity_dim > 0 habilita campo gravitacional (gravitational_objective)
             self.metric_net = MetricNet(
                 dim=config.drm_dim,
                 hidden_dim=getattr(config, "metric_net_hidden", 32),
                 eps=config.metric_eps,
                 n_quad=getattr(config, "metric_net_n_quad", 5),
+                gravity_dim=getattr(config, "metric_gravity_dim", 0),
             )
             # Fallback G constante para batch_to_anchors e backward compat
             self.metric_tensor = LearnableMetricTensor(
