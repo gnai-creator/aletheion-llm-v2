@@ -1,0 +1,122 @@
+# ~350M params - Real Geodesic Fine-tuning on 5x H200 SXM 141GB - FP32
+#
+# Branch: real_geodesic
+# Hipotese: G(x) variavel por ponto produz curvatura Riemanniana real.
+#           Se o espaco epistemico tem curvatura intrinseca, G(x) vai
+#           aprender estrutura local e a calibracao deve melhorar por regiao.
+#
+# Diferenca vs full_mahalanobis:
+#   - MetricNet: MLP (5->32->15, ~700 params) produz G(x) SPD por ponto
+#   - Distancia via integral de linha Gauss-Legendre (5 pontos)
+#   - LR separado para MetricNet (10x base = 5e-4)
+#   - Smoothness regularization: penaliza variacao abrupta de G(x)
+#   - ~10-15% mais lento que full_mahalanobis (5 forwards de MetricNet por distancia)
+#
+# Resumo do backbone: checkpoints/350m_backbone_final/final.pt (step 106811)
+# Comando:
+#   torchrun --nproc_per_node=5 scripts/train_distributed.py \
+#     --config configs/scaling/350m_real_geodesic_5xh200.yaml \
+#     --resume checkpoints/350m_backbone_final/final.pt
+#
+# 5x H200 SXM: 141GB VRAM per GPU
+#   batch=14 per GPU, grad_accum=1
+#   effective batch = 14 * 5 * 1 = 70
+#   fp32 full
+#
+# Estimate:
+#   tokens_per_step = 14 * 5 * 1024 = 71,680
+#   total_steps = 1B / 71,680 = 13,950
+#   Throughput: ~45-55K tok/s (integral de linha adiciona overhead)
+#   Time: ~6-7h
+#   Cost: ~$17.95/hr * 7h = ~$126
+#
+# O que monitorar:
+#   - metric_G_var: se ~0, G(x) e constante (espaco plano, experimento negativo)
+#   - metric_G_diag_mean: escala de G (deve ficar perto de 1.0)
+#   - metric_G_frob_mean: complexidade de G
+#   - grad_norm do MetricNet (se << grad_norm geral, LR precisa subir)
+
+# --- Modelo ---
+vocab_size: 50257
+d_model: 1024
+n_heads: 16
+n_layers: 24
+d_ff: 4096
+max_seq_len: 1024
+dropout: 0.05
+
+# --- Tomography ---
+enable_tomography: true
+
+# --- Metric Tensor: G(x) variavel (curvatura real) ---
+metric_position_dependent: true
+metric_net_hidden: 32
+metric_net_n_quad: 5
+metric_net_lr_multiplier: 10.0
+lambda_metric_smoothness: 0.1
+metric_max_condition: 50.0
+
+# --- Training ---
+batch_size: 14
+learning_rate: 0.00005
+weight_decay: 0.01
+warmup_steps: 100
+grad_clip: 0.5
+total_tokens: 1_000_000_000
+log_interval: 50
+eval_interval: 500
+early_stopping_patience: 5
+save_interval: 500
+
+# --- Performance 5x H200 fp32 ---
+mixed_precision: "no"
+gradient_accumulation_steps: 1
+gradient_checkpointing: false
+compile_model: false
+distributed: true
+dist_backend: nccl
+fsdp: false
+
+# --- Annealing ---
+loss_warmup_fraction: 0.30
+loss_ramp_fraction: 0.80
+
+# --- Lambdas (identicas ao v2) ---
+lambda_ce: 1.5
+lambda_stp: 0.01
+lambda_varo: 0.01
+lambda_vi: 0.001
+lambda_mad: 0.005
+lambda_metric_reg: 0.001
+lambda_eidos: 0.0005
+lambda_conflict: 0.0005
+lambda_consciousness: 0.0003
+lambda_grounding: 0.0005
+lambda_plasticity: 0.0002
+lambda_frontier: 0.0002
+lambda_mopsi: 0.0003
+lambda_contrastive: 0.0003
+
+# --- Lambda Decay ---
+lambda_decay_mode: exponential
+lambda_decay_k: 0.0001
+
+# --- Data ---
+data_dir: data/350m_rtx4090
+streaming: false
+num_workers: 8
+prefetch_factor: 4
+
+# --- STP ---
+enable_stp: true
+stp_num_triplets: 1
+
+# --- Continual Learning ---
+enable_ewc: false
+enable_replay: false
+
+# --- Logging ---
+save_dir: checkpoints/350m_real_geodesic
+wandb_project: aletheion-v2-350m
+wandb_run_name: real_geodesic_5xh200
+save_total_limit: 5
