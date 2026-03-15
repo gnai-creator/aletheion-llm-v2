@@ -1,9 +1,22 @@
 # Aletheion LLM v2
 
+[![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
+[![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-blue.svg)](https://www.python.org/)
+[![PyTorch](https://img.shields.io/badge/PyTorch-2.0%2B-ee4c2c.svg)](https://pytorch.org/)
+[![DOI](https://img.shields.io/badge/DOI-10.13140%2FRG.2.2.11471.14241-green.svg)](https://doi.org/10.13140/RG.2.2.11471.14241)
+[![ECE](https://img.shields.io/badge/ECE-0.0176-brightgreen.svg)](#calibration-results)
+[![Brier](https://img.shields.io/badge/Brier-0.1528-brightgreen.svg)](#calibration-results)
+[![Params](https://img.shields.io/badge/Params-354M-orange.svg)](#architecture)
+[![Tests](https://img.shields.io/badge/Tests-261-passing.svg)](#testes)
+
 Decoder-only LLM com sistema epistemico integrado como `nn.Module` treinaveis.
 Cada token produz uma **tomografia epistemica** completa no manifold Riemanniano 5D.
 
 **354M params** | **261 testes** | **15 configs (1M-640B)** | **Continual Learning (EWC + Replay)** | **AGPL-3.0**
+
+## Architecture
+
+![AletheionV2 Architecture](docs/architecture_aletheion_v2.png)
 
 ---
 
