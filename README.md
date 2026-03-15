@@ -7,6 +7,30 @@ Cada token produz uma **tomografia epistemica** completa no manifold Riemanniano
 
 ---
 
+## Branch: full_mahalanobis
+
+**Status:** In training
+**Precondition:** main baseline established (ECE 0.0176)
+**Geometry:** Flat, oblique axes. G is constant 5x5 SPD matrix (Cholesky).
+**Riemannian curvature:** Zero. Christoffel symbols = 0 when G is constant.
+
+### Hypothesis (defined pre-training)
+- H0: Off-diagonal G adds no calibration benefit over diagonal
+- H1: Epistemic dimensions are correlated -- constant off-diagonal G captures structure
+  that diagonal misses, improving ECE/Brier on OOD splits
+
+### Decision criterion
+- full_mahalanobis ECE < main ECE on OOD -> correlation exists, proceed to real_geodesic
+- full_mahalanobis ECE ~ main ECE -> axes are independent, diagonal was correct
+
+### Experimental Sequence
+1. `main` -- diagonal metric baseline (ECE 0.0176)
+2. `full_mahalanobis` (this branch) -- constant off-diagonal G
+3. `real_geodesic` -- position-dependent G(x)
+4. `gravitational_objective` -- G(x) + value feedback field
+
+---
+
 ## Indice
 
 - [Visao Geral](#visao-geral)
