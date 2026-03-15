@@ -7,6 +7,26 @@ Cada token produz uma **tomografia epistemica** completa no manifold Riemanniano
 
 ---
 
+## Branch: main
+
+**Status:** Complete
+**Result:** ECE 0.0176, Brier Score 0.1528, best-in-class on OOD WikiText-103 vs GPT-2 Medium and OPT-350M.
+**Geometry:** Flat, orthogonal axes. G = diag(tau). Riemannian curvature = 0.
+
+### Hypothesis
+- H0: Diagonal metric is insufficient -- axes are correlated or space is curved
+- H1: Diagonal metric captures sufficient epistemic structure
+- **Outcome: H1 confirmed empirically.**
+
+### Experimental Sequence
+This branch is the baseline for the following experimental sequence:
+1. `main` (this branch) -- diagonal metric baseline
+2. `full_mahalanobis` -- constant off-diagonal G, tests axis correlation
+3. `real_geodesic` -- position-dependent G(x), tests Riemannian curvature
+4. `gravitational_objective` -- G(x) conditioned on value feedback field
+
+---
+
 ## Indice
 
 - [Visao Geral](#visao-geral)
