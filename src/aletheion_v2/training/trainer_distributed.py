@@ -161,14 +161,20 @@ class DistributedTrainer:
         """Cria optimizer com weight decay seletivo.
 
         Bias e LayerNorm nao recebem weight decay.
+        MetricNet recebe LR separado (multiplicador configuravel).
         """
         decay_params = []
         no_decay_params = []
+        metric_net_params = []
+
+        lr_mult = getattr(self.config, "metric_net_lr_multiplier", 10.0)
 
         for name, param in self.model.named_parameters():
             if not param.requires_grad:
                 continue
-            if "bias" in name or "ln" in name or "layernorm" in name:
+            if "metric_net" in name:
+                metric_net_params.append(param)
+            elif "bias" in name or "ln" in name or "layernorm" in name:
                 no_decay_params.append(param)
             else:
                 decay_params.append(param)
@@ -177,6 +183,21 @@ class DistributedTrainer:
             {"params": decay_params, "weight_decay": self.config.weight_decay},
             {"params": no_decay_params, "weight_decay": 0.0},
         ]
+
+        # MetricNet com LR separado (sinal fraco em ~700 params numa rede de 354M)
+        if metric_net_params:
+            param_groups.append({
+                "params": metric_net_params,
+                "weight_decay": 0.0,
+                "lr": self.config.learning_rate * lr_mult,
+            })
+            if self.is_main:
+                n_params = sum(p.numel() for p in metric_net_params)
+                print(
+                    f"[METRIC-NET] {n_params} params, "
+                    f"lr={self.config.learning_rate * lr_mult:.2e} "
+                    f"({lr_mult}x base)"
+                )
 
         return torch.optim.AdamW(
             param_groups,
@@ -281,11 +302,19 @@ class DistributedTrainer:
                 self.optimizer.zero_grad()
                 return {"total": float('nan'), "ce": float('nan'), "nan_skipped": 1.0}
 
-            # Metric tensor G
+            # Metric tensor G (usa tomography.metric_G se disponivel)
             G = None
+            metric_net = None
             raw = self.raw_model
             if hasattr(raw, "epistemic_head"):
-                G = raw.epistemic_head.get_metric_tensor()
+                if (
+                    output.tomography is not None
+                    and output.tomography.metric_G is not None
+                ):
+                    G = output.tomography.metric_G
+                else:
+                    G = raw.epistemic_head.get_metric_tensor()
+                metric_net = raw.epistemic_head.get_metric_net()
 
             losses = self.criterion(
                 output.logits, labels,
@@ -294,6 +323,7 @@ class DistributedTrainer:
                 step=self.global_step,
                 total_steps=self.total_steps,
                 hidden_states=output.hidden_states,
+                metric_net=metric_net,
             )
 
             loss = losses["total"] / self.config.gradient_accumulation_steps
@@ -359,6 +389,15 @@ class DistributedTrainer:
                 for i in range(min(coords.shape[0], 5)):
                     metrics[f"drm_coord_{i}"] = coords[i].item()
                 metrics["drm_coord_std"] = tomo.drm_coords.std().item()
+
+            # MetricNet: variacao de G(x) no batch
+            if tomo.metric_G is not None and tomo.metric_G.dim() == 4:
+                G_batch = tomo.metric_G
+                metrics["metric_G_var"] = G_batch.var(dim=(0, 1)).mean().item()
+                G_diag = G_batch.diagonal(dim1=-2, dim2=-1)
+                metrics["metric_G_diag_mean"] = G_diag.mean().item()
+                G_frob = G_batch.pow(2).sum(dim=(-2, -1)).sqrt()
+                metrics["metric_G_frob_mean"] = G_frob.mean().item()
 
             # --- Tier 1: Eidos ---
             if tomo.eidos_weights is not None:
@@ -693,9 +732,26 @@ class DistributedTrainer:
         print(f"  [SAVE] {path}")
 
     def load_checkpoint(self, path: str) -> None:
-        """Carrega checkpoint."""
+        """Carrega checkpoint (com migration para MetricNet)."""
         state = torch.load(path, map_location=self.device, weights_only=False)
-        self.raw_model.load_state_dict(state["model"])
+
+        model_state = state["model"]
+
+        # Migration: checkpoint antigo sem metric_net
+        has_metric_net = any("metric_net" in k for k in self.raw_model.state_dict())
+        ckpt_has_metric_net = any("metric_net" in k for k in model_state)
+
+        if has_metric_net and not ckpt_has_metric_net:
+            if self.is_main:
+                print("[MIGRATE] Checkpoint sem metric_net, carregando com strict=False")
+            missing, unexpected = self.raw_model.load_state_dict(
+                model_state, strict=False,
+            )
+            if self.is_main and missing:
+                metric_missing = [k for k in missing if "metric_net" in k]
+                print(f"[MIGRATE] {len(metric_missing)} params de MetricNet inicializados do zero")
+        else:
+            self.raw_model.load_state_dict(model_state)
         self.optimizer.load_state_dict(state["optimizer"])
         self.scheduler.current_step = state["scheduler_step"]
         self.global_step = state["global_step"]

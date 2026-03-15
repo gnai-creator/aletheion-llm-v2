@@ -1,22 +1,17 @@
 """
 MAD Confidence: C(p) = exp(-d^2 / 2*tau^2).
 
-Confianca baseada em distancia de Mahalanobis ao truth centroid.
+Confianca baseada em distancia ao truth centroid.
 Usa Gaussian decay para mapear distancia em confianca [0, 1].
 
-Formulas:
-    C(p) = exp(-d^2 / (2 * tau^2))         -- isotropico
-    C(p) = exp(-0.5 * sum(delta_i^2/tau_i^2))  -- anisotropico
-
-Propriedades:
-    - C = 1 quando p = truth (d = 0)
-    - C -> 0 quando p esta longe do truth
-    - tau controla velocidade de decaimento
+Tres modos:
+- G=None: diagonal Mahalanobis via BayesianTau
+- G [D,D]: Mahalanobis completa constante
+- G [B,T,D,D]: Mahalanobis com tensor metrico local (curvatura real)
 """
 
 import torch
 import torch.nn as nn
-import math
 from typing import Optional
 
 from aletheion_v2.mad.bayesian_tau import BayesianTau
@@ -26,7 +21,7 @@ class MADConfidence(nn.Module):
     """Confianca MAD via Gaussian decay.
 
     Combina:
-    1. BayesianTau para tau^2 aprendivel
+    1. BayesianTau para tau^2 aprendivel (escala)
     2. Gaussian kernel para mapear distancia -> confianca
 
     Args:
@@ -53,14 +48,10 @@ class MADConfidence(nn.Module):
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """Computa confianca MAD.
 
-        Quando G e fornecido, usa distancia Mahalanobis completa via
-        tensor metrico aprendido (geometria real). Quando G=None,
-        fallback para BayesianTau diagonal (compatibilidade).
-
         Args:
             coords: [B, T, drm_dim] coordenadas no manifold
             truth_centroid: [drm_dim] centroide truth
-            G: [drm_dim, drm_dim] tensor metrico SPD (opcional)
+            G: tensor metrico - [D,D] constante ou [B,T,D,D] local
 
         Returns:
             confidence: [B, T, 1] confianca em [0, 1]
@@ -70,9 +61,17 @@ class MADConfidence(nn.Module):
         tau_sq = self.tau.get_tau_sq()
 
         if G is not None:
-            # Distancia Mahalanobis completa: d^2 = delta^T @ G @ delta
             delta = coords - truth_centroid.unsqueeze(0).unsqueeze(0)
-            Gd = torch.matmul(delta, G)  # [B, T, D]
+
+            if G.dim() == 4:
+                # G(x) local: [B, T, D, D]
+                Gd = torch.matmul(
+                    delta.unsqueeze(-2), G
+                ).squeeze(-2)  # [B, T, D]
+            else:
+                # G constante: [D, D]
+                Gd = torch.matmul(delta, G)  # [B, T, D]
+
             d_sq_metric = (Gd * delta).sum(dim=-1, keepdim=True)
             d_sq_metric = d_sq_metric.clamp(min=0.0)
 
@@ -87,4 +86,3 @@ class MADConfidence(nn.Module):
         confidence = torch.exp(-0.5 * d_sq)
 
         return confidence, d_sq, tau_sq
-

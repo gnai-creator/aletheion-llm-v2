@@ -37,6 +37,12 @@ class AletheionV2Config:
 
     # --- Metric Tensor ---
     metric_eps: float = 1e-6  # Regularizacao SPD
+    metric_position_dependent: bool = True  # G(x) variavel vs G constante
+    metric_net_hidden: int = 32  # Hidden dim da MetricNet
+    metric_net_n_quad: int = 5  # Pontos de quadratura Gauss-Legendre
+    metric_net_lr_multiplier: float = 10.0  # LR multiplicador para MetricNet
+    lambda_metric_smoothness: float = 0.1  # Suavidade do campo G(x)
+    metric_max_condition: float = 50.0  # Condition number maximo
 
     # --- Directional Field ---
     dir_num_bins: int = 16  # Bins de entropia de atencao

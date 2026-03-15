@@ -28,7 +28,7 @@ from aletheion_v2.config import AletheionV2Config
 from aletheion_v2.core.output import EpistemicTomography
 from aletheion_v2.epistemic.gates import Q1Gate, Q2Gate, AdaptiveTemperature
 from aletheion_v2.drm.manifold_embedding import ManifoldEmbedding
-from aletheion_v2.drm.metric_tensor import LearnableMetricTensor
+from aletheion_v2.drm.metric_tensor import LearnableMetricTensor, MetricNet
 from aletheion_v2.drm.directional_field import DirectionalField
 from aletheion_v2.drm.geodesic_distance import GeodesicDistance
 from aletheion_v2.mad.confidence import MADConfidence
@@ -71,10 +71,25 @@ class EpistemicHead(nn.Module):
             config.d_model, config.drm_dim, config.drm_num_anchors,
         )
 
-        # DRM: Metric tensor (G = L@L^T)
-        self.metric_tensor = LearnableMetricTensor(
-            config.drm_dim, config.metric_eps,
-        )
+        # DRM: Metric tensor
+        self.use_metric_net = getattr(config, "metric_position_dependent", False)
+        if self.use_metric_net:
+            # G(x) variavel -- curvatura real
+            self.metric_net = MetricNet(
+                dim=config.drm_dim,
+                hidden_dim=getattr(config, "metric_net_hidden", 32),
+                eps=config.metric_eps,
+                n_quad=getattr(config, "metric_net_n_quad", 5),
+            )
+            # Fallback G constante para batch_to_anchors e backward compat
+            self.metric_tensor = LearnableMetricTensor(
+                config.drm_dim, config.metric_eps,
+            )
+        else:
+            self.metric_net = None
+            self.metric_tensor = LearnableMetricTensor(
+                config.drm_dim, config.metric_eps,
+            )
 
         # DRM: Directional field (attn -> directions + dim_D)
         self.directional_field = DirectionalField(
@@ -243,17 +258,27 @@ class EpistemicHead(nn.Module):
         coords, anchor_dists = self.manifold_emb(hidden_states)
 
         # DRM: Metric tensor
-        G = self.metric_tensor()
+        G_constant = self.metric_tensor()
+        if self.use_metric_net:
+            G_local = self.metric_net(coords)  # [B, T, D, D]
+        else:
+            G_local = None
 
         # DRM: Directional field
         directions, dim_D = self.directional_field(attention_patterns)
 
-        # DRM: Geodesic distance
+        # DRM: Geodesic distance (integral de linha se metric_net ativo)
         truth_centroid = self.manifold_emb.anchors.truth_centroid
-        metric_distance = self.geodesic_dist(coords, truth_centroid, G)
+        metric_distance = self.geodesic_dist(
+            coords, truth_centroid, G_constant,
+            metric_net=self.metric_net,
+        )
 
-        # MAD: Confidence (usa tensor metrico G para geometria real)
-        confidence, d_sq, tau_sq = self.mad_confidence(coords, truth_centroid, G)
+        # MAD: Confidence (usa G local se disponivel, senao G constante)
+        G_for_mad = G_local if G_local is not None else G_constant
+        confidence, d_sq, tau_sq = self.mad_confidence(
+            coords, truth_centroid, G_for_mad,
+        )
 
         # VI: Phi field
         phi_components, phi_total = self.phi_field(coords, confidence)
@@ -382,11 +407,20 @@ class EpistemicHead(nn.Module):
             mediated_score=mediated,
             state_gate=state_gate,
             divergence=divergence,
+            # Metric field
+            metric_G=G_local if G_local is not None else G_constant,
         )
 
     def get_metric_tensor(self) -> torch.Tensor:
-        """Retorna G para uso na loss de regularizacao."""
+        """Retorna G constante para uso na loss de regularizacao.
+
+        Para G(x) variavel, a loss usa tomography.metric_G.
+        """
         return self.metric_tensor()
+
+    def get_metric_net(self) -> Optional["MetricNet"]:
+        """Retorna MetricNet se habilitado."""
+        return self.metric_net if self.use_metric_net else None
 
     def get_tau_sq(self) -> torch.Tensor:
         """Retorna tau^2 para uso na loss MAD."""

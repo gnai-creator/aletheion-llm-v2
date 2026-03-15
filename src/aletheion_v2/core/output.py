@@ -86,6 +86,9 @@ class EpistemicTomography:
     # --- Metacognitive (Tier 3) ---
     divergence: Optional[torch.Tensor] = None          # [B, T, 1]
 
+    # --- Metric Field (DRM) ---
+    metric_G: Optional[torch.Tensor] = None            # [B, T, D, D] ou [D, D]
+
     def to_dict(self) -> Dict[str, Any]:
         """Converte para dict de tensores (para serializar)."""
         result = {}

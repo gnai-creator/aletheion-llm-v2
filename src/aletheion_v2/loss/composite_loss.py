@@ -200,21 +200,22 @@ class AletheionV2Loss(nn.Module):
         progress = (step - warmup_end) / max(ramp_end - warmup_end, 1)
         return progress
 
-    def metric_regularization(self, G: torch.Tensor) -> torch.Tensor:
-        """Regularizacao do tensor metrico G.
+    def metric_regularization(
+        self,
+        G: torch.Tensor,
+        metric_net: Optional[object] = None,
+        coords: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
+        """Regularizacao do tensor metrico G (constante ou variavel).
 
-        Permite que G aprenda estrutura nao-diagonal (correlacoes entre
-        eixos, curvatura real) enquanto mantém condition number limitado
-        para estabilidade numerica.
-
-        Penaliza:
-        1. Condition number alto (ratio max/min eigenvalue)
-        2. Frobenius norm excessiva (previne escala explosiva)
-
-        NAO penaliza off-diagonal — isso permite curvatura real.
+        Para G constante [D,D]: condition proxy + scale penalty.
+        Para G(x) [B,T,D,D]: condition proxy por ponto + suavidade
+        do campo via perturbacao.
 
         Args:
-            G: [D, D] tensor metrico
+            G: [D, D] ou [B, T, D, D] tensor metrico
+            metric_net: MetricNet para smoothness (opcional)
+            coords: [B, T, D] coordenadas (para smoothness)
 
         Returns:
             loss: escalar
@@ -223,24 +224,63 @@ class AletheionV2Loss(nn.Module):
         if torch.isnan(G).any() or torch.isinf(G).any():
             return torch.tensor(0.0, device=G.device, dtype=G.dtype)
 
-        # Frobenius-based: penaliza norma excessiva (mantém escala razoavel)
-        # Usa Frobenius em vez de eigvalsh para evitar NaN no backward
+        if G.dim() == 2:
+            return self._metric_reg_constant(G)
+        return self._metric_reg_field(G, metric_net, coords)
+
+    def _metric_reg_constant(self, G: torch.Tensor) -> torch.Tensor:
+        """Regularizacao para G constante [D, D]."""
         diag = G.diagonal()
         frob_sq = G.pow(2).sum()
         trace = diag.sum()
         dim = G.shape[0]
 
-        # Penaliza se Frobenius norm >> trace (indica off-diagonais enormes
-        # ou eigenvalue spread grande). Para G = c*I, frob_sq = c^2*dim
-        # e trace = c*dim, entao frob_sq/trace^2 = 1/dim (minimo).
-        # Penaliza desvio desse minimo, mas nao zera off-diagonais.
         normalized_frob = frob_sq / (trace.pow(2).clamp(min=1e-8))
         condition_proxy = (normalized_frob - 1.0 / dim).clamp(min=0.0)
-
-        # Penaliza escala total (previne G explodir)
         scale_penalty = (trace / dim - 1.0).pow(2)
 
         return condition_proxy + 0.1 * scale_penalty
+
+    def _metric_reg_field(
+        self,
+        G: torch.Tensor,
+        metric_net: Optional[object] = None,
+        coords: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
+        """Regularizacao para G(x) variavel [B, T, D, D].
+
+        Penaliza:
+        1. Condition number alto por ponto (Frobenius proxy)
+        2. Escala excessiva por ponto
+        3. Variacao abrupta de G (suavidade do campo)
+        """
+        dim = G.shape[-1]
+        diag = G.diagonal(dim1=-2, dim2=-1)  # [B, T, D]
+        frob_sq = G.pow(2).sum(dim=(-2, -1))  # [B, T]
+        trace = diag.sum(dim=-1)  # [B, T]
+
+        # Condition proxy por ponto (media sobre batch)
+        normalized_frob = frob_sq / trace.pow(2).clamp(min=1e-8)
+        condition_proxy = (normalized_frob - 1.0 / dim).clamp(min=0.0).mean()
+
+        # Escala por ponto
+        scale_penalty = (trace / dim - 1.0).pow(2).mean()
+
+        loss = condition_proxy + 0.1 * scale_penalty
+
+        # Suavidade: G nao deve variar abruptamente
+        lambda_smooth = getattr(self.config, "lambda_metric_smoothness", 0.1)
+        if metric_net is not None and coords is not None:
+            eps = 0.01
+            noise = torch.randn_like(coords) * eps
+            coords_perturbed = (coords + noise).clamp(0, 1)
+            G_perturbed = metric_net(coords_perturbed)
+            smoothness = (G - G_perturbed.detach()).pow(2).sum(
+                dim=(-2, -1)
+            ).mean()
+            loss = loss + lambda_smooth * smoothness
+
+        return loss
 
     def _compute_extension_losses(
         self,
@@ -364,6 +404,7 @@ class AletheionV2Loss(nn.Module):
         step: int = 0,
         total_steps: int = 1,
         hidden_states: Optional[torch.Tensor] = None,
+        **kwargs,
     ) -> Dict[str, torch.Tensor]:
         """Computa loss composta.
 
@@ -438,7 +479,11 @@ class AletheionV2Loss(nn.Module):
         # Metric Regularization
         metric_loss = torch.tensor(0.0, device=ce.device)
         if G is not None:
-            metric_loss = self.metric_regularization(G)
+            metric_loss = self.metric_regularization(
+                G,
+                metric_net=kwargs.get("metric_net"),
+                coords=tomography.drm_coords if tomography is not None else None,
+            )
         losses["metric"] = metric_loss
 
         # --- Extension losses ---
