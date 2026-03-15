@@ -7,6 +7,36 @@ Cada token produz uma **tomografia epistemica** completa no manifold Riemanniano
 
 ---
 
+## Branch: real_geodesic
+
+**Status:** In training
+**Precondition:** full_mahalanobis results
+**Geometry:** Potentially curved. G(x) is a learned tensor field via MetricNet (5->32->15, ~700 params).
+
+### Hypothesis (defined pre-training)
+- H0: G(x) converges to constant -- epistemic space is intrinsically flat
+- H1: G(x) learns structural variation -- Riemannian curvature exists in the epistemic manifold
+
+### Key design decisions
+- **Tanh activation** (not ReLU): G(x) must be C1 smooth for Christoffel symbols to be defined
+- **softplus + 1e-3 on diagonal**: numerically stable SPD guarantee
+- **Zero init on last layer**: G(x) ~ I at initialization, stable training start
+- **Separate LR 10x**: MetricNet gradient signal is weak relative to main model
+- **Smoothness regularization**: penalizes discontinuities in G(x)
+- **5 Gauss-Legendre points**: sufficient for smooth G(x) with Tanh activation
+
+### Decision criterion
+- max(std(G(x) along path)) > 0.01 -> curvature confirmed, proceed to gravitational_objective
+- G(x) ~ constant -> flat space confirmed
+
+### Experimental Sequence
+1. `main` -- diagonal metric baseline (ECE 0.0176)
+2. `full_mahalanobis` -- constant off-diagonal G
+3. `real_geodesic` (this branch) -- position-dependent G(x)
+4. `gravitational_objective` -- G(x) + value feedback field
+
+---
+
 ## Indice
 
 - [Visao Geral](#visao-geral)
