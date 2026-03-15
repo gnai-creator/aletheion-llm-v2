@@ -7,6 +7,37 @@ Cada token produz uma **tomografia epistemica** completa no manifold Riemanniano
 
 ---
 
+## Branch: gravitational_objective
+
+**Status:** Implementation ready. Training blocked pending real_geodesic results.
+**Precondition:** real_geodesic H1 confirmed (G(x) varies with position).
+**Geometry:** Curved space with value-weighted metric. G(x, gravity_field) depends on
+both epistemic position and accumulated human feedback signal.
+
+### Hypothesis (defined pre-implementation)
+- Precondition: real_geodesic confirms non-flat epistemic manifold
+- H0: Gravity field adds no benefit over geometric curvature alone
+- H1: Value-weighted geometry improves alignment signal -- regions with negative
+  human feedback become geometrically costly, reducing model's tendency to
+  navigate toward misaligned outputs
+
+### Architecture extension
+MetricNet input extended from 5D to 10D: [epistemic_coords (5), gravity_field (5)].
+With gravity_field=zeros, gravitational_objective is mathematically identical to real_geodesic.
+
+### Critical note
+DO NOT activate gravity_field during initial training.
+Initial training run = real_geodesic with gravity_field zeroed.
+Gravity field activated in second fine-tuning phase after feedback data collection.
+
+### Experimental Sequence
+1. `main` -- diagonal metric baseline (ECE 0.0176)
+2. `full_mahalanobis` -- constant off-diagonal G
+3. `real_geodesic` -- position-dependent G(x)
+4. `gravitational_objective` (this branch) -- G(x) + value feedback field
+
+---
+
 ## Indice
 
 - [Visao Geral](#visao-geral)
