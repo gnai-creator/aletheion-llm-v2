@@ -570,7 +570,7 @@ Cognition), onde existem como modulos Python no pipeline de orquestracao:
 
 | Conceito | Descricao Original | Origem |
 |----------|--------------------|--------|
-| **DRM (Differential Reference Manifold)** | Manifold Riemanniano 5D para modelagem epistemica | ATIC v2.0+ (2025) |
+| **DRM (Directional Relational Manifold)** | Manifold Riemanniano 5D para modelagem epistemica | ATIC v2.0+ (2025) |
 | **MAD (Metric-Aware Distance)** | Confianca Bayesiana com tau^2 e decaimento Gaussiano | ATIC v2.0+ (2025) |
 | **VI (Vetor de Intencionalidade)** | Monitoramento e correcao homestatica do manifold via phi(M) | ATIC v2.5+ (2025) |
 | **MPC Navigator** | Controle preditivo com beam search no manifold epistemico | ATIC v3.0+ (2025) |
