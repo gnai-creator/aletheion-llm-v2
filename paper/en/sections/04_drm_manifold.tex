@@ -10,6 +10,22 @@ on which the epistemic system operates. Each token is mapped to a point
 on a learned 5D Riemannian manifold, where geodesic distances encode
 epistemic relationships.
 
+\paragraph{Relation to information geometry.}
+Information geometry \cite{Amari2000} endows the space of probability
+distributions with a Riemannian structure via the Fisher Information Matrix
+$g_{ij}(\theta) = \E[\partial_i \log p \cdot \partial_j \log p]$.
+This framework, intrinsic by Chentsov's theorem \cite{Chentsov1982}, unifies
+statistical estimation and divergence geometry under a single formalism
+\cite{Nielsen2020}.
+
+The DRM used in \aletheion{} extends information geometry to the
+variable-dimension setting: where Amari's framework operates on manifolds of
+fixed dimension~$n$, DRM allows $\dim\mathcal{D}(p)$ to vary
+pointwise---modelling the epistemic head's ability to represent varying
+numbers of active uncertainty dimensions depending on the input.  When
+$\dim\mathcal{D}(p) = n$ (constant) and $g_p$ is the Fisher metric, DRM
+reduces to standard information geometry.
+
 \subsection{Manifold Embedding}
 
 The mapping from hidden states to 5D coordinates is performed by an

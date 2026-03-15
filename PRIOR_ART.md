@@ -68,6 +68,33 @@ os conceitos originais se apoiam.
   Deep ensembles. Motivacao para a abordagem alternativa via manifold (DRM)
   criada no ATIC.
 
+### Information Geometry
+
+- **Amari & Nagaoka (2000)** - "Methods of Information Geometry" (AMS)
+  Framework canônico que equipa o espaco de distribuicoes de probabilidade
+  com estrutura Riemanniana via Fisher Information Matrix:
+  g_ij(theta) = E[d_i log p . d_j log p].
+  Intrinseco pelo teorema de Chentsov, unifica estimacao estatistica,
+  familias exponenciais e geometria de divergencia.
+  **Relacao com DRM:** Amari opera em manifolds de dimensao fixa n.
+  O DRM generaliza permitindo dim D(p) variar por ponto -- modelando
+  sistemas cujos graus de liberdade ativos emergem ou colapsam
+  dinamicamente. Quando dim D(p) = n (constante) e g_p e a metrica
+  de Fisher, DRM reduz a information geometry (Corollary 3.13 no
+  paper ATIC).
+
+- **Chentsov (1982)** - "Statistical Decision Rules and Optimal Inference" (AMS)
+  Prova que a metrica de Fisher e a unica metrica Riemanniana invariante
+  por estatisticas suficientes. Fundamenta a unicidade da metrica
+  em information geometry. O DRM relaxa esta restricao ao permitir
+  metricas aprendidas (G = LL^T) que nao sao necessariamente Fisher.
+
+- **Nielsen (2020)** - "An Elementary Introduction to Information Geometry"
+  (Entropy, arXiv:1808.08271)
+  Introducao acessivel cobrindo dually flat spaces, familias exponenciais,
+  divergencias de Bregman. Referencia pedagogica para o posicionamento
+  do DRM como extensao de information geometry.
+
 ### Geometria Riemanniana em ML
 
 - **Bronstein et al. (2017)** - "Geometric Deep Learning"
