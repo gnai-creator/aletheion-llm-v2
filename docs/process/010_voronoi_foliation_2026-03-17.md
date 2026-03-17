@@ -95,13 +95,39 @@ Para cada candidato, computar grafo Reeb:
 
 Se Reeb graph e arvore (sem loops), level sets definem foliacao simples.
 
-### 3.5 Persistent Homology (sanity check)
+**Pre-condicao critica:** Reeb graph pressupoe que f e funcao de Morse (gradiente nao-nulo quase em todo lugar). Confidence e phi_total sao outputs de sigmoids saturadas — podem ter regioes extensas onde f ~ constante, criando artefatos no grafo. Antes de computar:
 
-H_0, H_1 do point cloud com distancia Riemanniana:
-- H_0: estrutura de clusters = folhas em dado nivel
-- H_1: loops correspondem a topologia toroidal esperada (Theorem 8.1)
+1. Plotar distribuicao empirica de cada candidato f
+2. Se concentrada perto de 0 ou 1, aplicar logit transform: f' = log(f / (1-f)) com clipping em [epsilon, 1-epsilon]
+3. Re-verificar que f' tem variacao suficiente (std > 0.5 apos transform)
+4. Documentar a transformacao e justificar que preserva a estrutura topologica (logit e difeomorfismo em (0,1))
+
+### 3.5 Persistent Homology
+
+H_0, H_1, H_2 do point cloud com distancia Riemanniana.
 
 Usar ripser ou giotto-tda em subsample (~10K-50K pontos).
+
+**Criterio de validacao toroidal (Theorem 8.1 DRM):**
+
+O toro T^2 tem assinatura homologica:
+- H_0 = Z (um componente conexo)
+- H_1 = Z^2 (dois loops independentes: poloidal e toroidal)
+- H_2 = Z (uma cavidade)
+
+Se a persistent homology do subsample Riemanniano encontrar:
+- rank(H_1) = 2 com barras de persistencia longas (significativamente acima do ruido)
+- rank(H_2) = 1 com barra de persistencia longa
+
+Entao temos evidencia empirica de que o manifold epistemico aprendido pelo AletheionV2 tem topologia consistente com T^2, conectando o modelo neural ao DRM num unico experimento.
+
+**Criterios de rejeicao:**
+- rank(H_1) = 0: manifold trivial (sem loops), topologia nao-toroidal
+- rank(H_1) = 1: topologia de cilindro S^1 x R, nao T^2
+- rank(H_1) > 2: topologia mais complexa que T^2 (genus > 1)
+- Barras de persistencia curtas em H_1/H_2: loops sao artefatos de amostragem, nao estrutura genuina
+
+Este passo transforma o sanity check em teste empirico direto da hipotese toroidal.
 
 ## 4. Visualizacao
 

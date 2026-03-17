@@ -7,34 +7,43 @@ Cada token produz uma **tomografia epistemica** completa no manifold Riemanniano
 
 ---
 
-## Branch: gravitational_objective
+## Branch: epistemic-foliation
 
-**Status:** Implementation ready. Training blocked pending real_geodesic results.
-**Precondition:** real_geodesic H1 confirmed (G(x) varies with position).
-**Geometry:** Curved space with value-weighted metric. G(x, gravity_field) depends on
-both epistemic position and accumulated human feedback signal.
+**Parent:** gravitational_objective
+**Status:** Experiment planned. Implementation in progress.
+**Goal:** Detect whether the 5D epistemic manifold admits a natural foliation via Riemannian Voronoi tessellation.
 
-### Hypothesis (defined pre-implementation)
-- Precondition: real_geodesic confirms non-flat epistemic manifold
-- H0: Gravity field adds no benefit over geometric curvature alone
-- H1: Value-weighted geometry improves alignment signal -- regions with negative
-  human feedback become geometrically costly, reducing model's tendency to
-  navigate toward misaligned outputs
+### Hypothesis
 
-### Architecture extension
-MetricNet input extended from 5D to 10D: [epistemic_coords (5), gravity_field (5)].
-With gravity_field=zeros, gravitational_objective is mathematically identical to real_geodesic.
+- H0: The Voronoi cells of the 5D epistemic output space do not decompose into consistent lower-dimensional leaves (no foliation; structure is arbitrary).
+- H1: The cells exhibit a natural foliation -- consistent effective dimensionality d < 5 across cells, with coherent tangent spaces between neighbors, corresponding to interpretable epistemic states.
 
-### Critical note
-DO NOT activate gravity_field during initial training.
-Initial training run = real_geodesic with gravity_field zeroed.
-Gravity field activated in second fine-tuning phase after feedback data collection.
+### Method
+
+1. Extract 5D epistemic vectors per token (q1, q2, confidence, vi_magnitude, phi_total) from the fine-tuned model.
+2. Compute Riemannian Voronoi tessellation using the learned MetricNet G(x) as distance function.
+3. Run Local Tangent Space Analysis (LTSA) per cell to detect eigenvalue gaps.
+4. Test tangent coherence between neighboring cells.
+5. Compute Reeb graph via level sets of confidence/phi (with logit pre-transform for sigmoid saturation).
+6. Validate toroidal topology via persistent homology: H1 = Z^2, H2 = Z confirms T^2 (Theorem 8.1, DRM).
+
+### Validation
+
+- Three null models: shuffled, uniform, backbone (pre-fine-tuning).
+- Seed stability: ARI > 0.7 across 10 random restarts.
+- Interpretability: cells must have distinguishable epistemic profiles.
+- Metric dependency: compare G(x) vs constant G vs identity.
+
+### Key connection
+
+If H1 rank = 2 and H2 rank = 1 in the persistent homology of the Riemannian subsample, this provides empirical evidence that the AletheionV2 epistemic manifold has T^2 topology -- connecting the neural model to the DRM in a single experiment.
 
 ### Experimental Sequence
 1. `main` -- diagonal metric baseline (ECE 0.0176)
 2. `full_mahalanobis` -- constant off-diagonal G
 3. `real_geodesic` -- position-dependent G(x)
-4. `gravitational_objective` (this branch) -- G(x) + value feedback field
+4. `gravitational_objective` -- G(x) + value feedback field
+5. `epistemic-foliation` (this branch) -- Voronoi foliation detection on the learned manifold
 
 ---
 
