@@ -261,7 +261,9 @@ def run_null_model(
 
     null_labels = np.argmin(cdist(null_vec, centers), axis=1)
     ltsa = ltsa_fn(null_vec, null_labels, min_points=50)
-    coh, _ = coherence_fn(centers, ltsa["eigenvectors"], ltsa["eff_dims"])
+    unique_null = np.unique(null_labels)
+    active_null_centers = centers[unique_null] if unique_null.max() < len(centers) else centers[:len(unique_null)]
+    coh, _ = coherence_fn(active_null_centers, ltsa["eigenvectors"], ltsa["eff_dims"])
     valid = coh[~np.isnan(coh)]
     mean_coh = float(valid.mean()) if len(valid) > 0 else 90.0
     coh_frac = float((valid < 30).mean()) if len(valid) > 0 else 0.0

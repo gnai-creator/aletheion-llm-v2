@@ -32,7 +32,7 @@ class RotaryEmbedding(nn.Module):
 
     def _build_cache(self, seq_len: int) -> None:
         """Pre-computa cos e sin para todas posicoes."""
-        t = torch.arange(seq_len, dtype=self.inv_freq.dtype)
+        t = torch.arange(seq_len, dtype=self.inv_freq.dtype, device=self.inv_freq.device)
         freqs = torch.outer(t, self.inv_freq)  # [T, dim/2]
         emb = torch.cat([freqs, freqs], dim=-1)  # [T, dim]
         self.register_buffer("cos_cached", emb.cos(), persistent=False)

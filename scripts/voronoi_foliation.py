@@ -285,10 +285,14 @@ def main() -> None:
         "cell_sizes": ltsa["cell_sizes"].tolist(),
     }
 
+    # Filtrar centers para clusters nao-vazios (LTSA opera em unique labels)
+    unique_labels = np.unique(labels)
+    active_centers = centers[unique_labels] if unique_labels.max() < len(centers) else centers[:len(unique_labels)]
+
     # 3. Coerencia Tangencial
     logger.info("=" * 60)
     logger.info("  FASE 3: Coerencia Tangencial")
-    coherence, _ = tangent_coherence(centers, ltsa["eigenvectors"], ltsa["eff_dims"])
+    coherence, _ = tangent_coherence(active_centers, ltsa["eigenvectors"], ltsa["eff_dims"])
     np.save(str(out_dir / "coherence_matrix.npy"), coherence)
     valid_coh = coherence[~np.isnan(coherence)]
     results["coherence"] = {
