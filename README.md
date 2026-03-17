@@ -589,7 +589,12 @@ permitindo que a epistemica seja aprendida end-to-end e influencie diretamente a
 Esta transposicao de orquestracao-em-Python para modulos-neurais-treinaveis e a
 contribuicao central deste trabalho.
 
-**Repositorio ATIC:** [github.com/gnai-creator/atic_consulting](https://github.com/gnai-creator/atic_consulting)
+---
+
+## References
+- AletheionV2: https://doi.org/10.13140/RG.2.2.11471.14241
+- DRM: https://doi.org/10.5281/zenodo.19058837
+- ATIC: https://doi.org/10.5281/zenodo.19058926
 
 ---
 
