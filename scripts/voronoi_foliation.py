@@ -238,6 +238,8 @@ def main() -> None:
         description="Riemannian Voronoi Tessellation e deteccao de foliacao"
     )
     parser.add_argument("--vectors", default="eval_results/foliation/finetuned_vectors.npy")
+    parser.add_argument("--drm-coords", default=None,
+                        help="Path to DRM coords .npy para correlacao folha-DRM")
     parser.add_argument("--checkpoint", default="checkpoints/350m_epistemic_finetune_v2/final.pt")
     parser.add_argument("--backbone-vectors", default=None)
     parser.add_argument("--output-dir", default="eval_results/foliation")
@@ -360,11 +362,61 @@ def main() -> None:
     logger.info("  FASE 8: Foliation Score")
     F = compute_foliation_score(ltsa["eff_dims"], coherence, mean_ari)
     results["foliation_score"] = F
+
+    # 9. Correlacao folha-DRM (se drm_coords disponivel)
+    if args.drm_coords and os.path.exists(args.drm_coords):
+        logger.info("=" * 60)
+        logger.info("  FASE 9: Correlacao Folha-DRM")
+        drm = np.load(args.drm_coords).astype(np.float32)
+        if drm.shape[0] == vectors.shape[0]:
+            drm_axis_names = ["q1_aleat", "q2_epist", "q3_complex",
+                              "q4_familiar", "q5_confid"]
+            drm_per_cell = {}
+            for k in range(len(centers)):
+                mask = labels == k
+                if mask.sum() < 10:
+                    continue
+                cell_drm = drm[mask]
+                drm_per_cell[str(k)] = {
+                    "n": int(mask.sum()),
+                    "mean": [float(x) for x in cell_drm.mean(axis=0)],
+                    "std": [float(x) for x in cell_drm.std(axis=0)],
+                }
+            # Separabilidade: ANOVA F-stat por eixo DRM entre celulas
+            from scipy import stats as sp_stats
+            f_stats = {}
+            groups = [drm[labels == k] for k in range(len(centers))
+                      if (labels == k).sum() >= 10]
+            if len(groups) >= 2:
+                for ax_i, ax_name in enumerate(drm_axis_names):
+                    ax_groups = [g[:, ax_i] for g in groups]
+                    f_val, p_val = sp_stats.f_oneway(*ax_groups)
+                    f_stats[ax_name] = {
+                        "F": float(f_val), "p": float(p_val),
+                    }
+            results["drm_correlation"] = {
+                "per_cell": drm_per_cell,
+                "anova_f_stats": f_stats,
+            }
+            np.save(str(out_dir / "drm_per_cell.npy"), drm)
+            logger.info(
+                "[DRM] Correlacao calculada para %d celulas, %d eixos",
+                len(drm_per_cell), len(f_stats),
+            )
+            for ax, fs in f_stats.items():
+                logger.info("  %s: F=%.2f p=%.2e", ax, fs["F"], fs["p"])
+        else:
+            logger.warning(
+                "[DRM] Shape mismatch: vectors=%d, drm=%d",
+                vectors.shape[0], drm.shape[0],
+            )
+
     results["config"] = {
         "n_seeds": args.n_seeds,
         "use_metric_net": args.use_metric_net,
         "n_vectors": int(vectors.shape[0]),
         "checkpoint": args.checkpoint,
+        "drm_coords": args.drm_coords,
     }
 
     results_path = out_dir / "foliation_results.json"
