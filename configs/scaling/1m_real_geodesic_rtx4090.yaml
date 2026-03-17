@@ -1,0 +1,99 @@
+# ~1M params - Real Geodesic on RTX 4090
+#
+# Branch: real_geodesic
+# Fase 2/4 da sequencia experimental.
+#
+# Hipotese: G(x) posicao-dependente (MetricNet) captura curvatura
+#           que G constante nao consegue.
+#
+# Diferenca vs full_mahalanobis:
+#   - metric_position_dependent: true (MetricNet MLP)
+#   - G varia com posicao no manifold
+#   - Christoffel symbols != 0 (espaco curvo)
+#
+# Resume do checkpoint full_mahalanobis.
+#
+# Estimativa RTX 4090:
+#   Throughput: ~150-300K tok/s (MetricNet adiciona overhead)
+#   total_tokens: 10M
+#   Tempo: ~1-2min
+
+# --- Modelo ---
+vocab_size: 50257
+d_model: 64
+n_heads: 2
+n_layers: 4
+d_ff: 256
+max_seq_len: 256
+dropout: 0.1
+
+# --- Tomography ---
+enable_tomography: true
+
+# --- Metric Tensor ---
+# G(x) posicao-dependente via MetricNet
+metric_position_dependent: true
+
+# --- Training ---
+batch_size: 16
+learning_rate: 0.0003
+weight_decay: 0.01
+warmup_steps: 50
+grad_clip: 0.5
+total_tokens: 10_000_000
+log_interval: 50
+eval_interval: 200
+early_stopping_patience: 5
+save_interval: 200
+
+# --- Performance RTX 4090 fp32 ---
+mixed_precision: "no"
+gradient_accumulation_steps: 4
+gradient_checkpointing: false
+compile_model: false
+distributed: false
+fsdp: false
+
+# --- Annealing ---
+loss_warmup_fraction: 0.30
+loss_ramp_fraction: 0.80
+
+# --- Lambdas ---
+lambda_ce: 1.5
+lambda_stp: 0.01
+lambda_varo: 0.01
+lambda_vi: 0.001
+lambda_mad: 0.005
+lambda_metric_reg: 0.001
+lambda_eidos: 0.0005
+lambda_conflict: 0.0005
+lambda_consciousness: 0.0003
+lambda_grounding: 0.0005
+lambda_plasticity: 0.0002
+lambda_frontier: 0.0002
+lambda_mopsi: 0.0003
+lambda_contrastive: 0.0003
+
+# --- Lambda Decay ---
+lambda_decay_mode: exponential
+lambda_decay_k: 0.0001
+
+# --- Data ---
+data_dir: data/350m_rtx4090
+streaming: false
+num_workers: 4
+prefetch_factor: 2
+
+# --- STP ---
+enable_stp: true
+stp_num_triplets: 1
+
+# --- Continual Learning ---
+enable_ewc: false
+enable_replay: false
+
+# --- Logging ---
+save_dir: checkpoints/1m_real_geodesic
+wandb_project: aletheion-v2-1m
+wandb_run_name: real_geodesic_rtx4090
+save_total_limit: 3
