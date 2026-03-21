@@ -71,6 +71,9 @@ class AletheionV2Loss(nn.Module):
         self.lambda_frontier = config.lambda_frontier
         self.lambda_mopsi = config.lambda_mopsi
         self.lambda_contrastive = config.lambda_contrastive
+        self.lambda_metric_diversity = getattr(
+            config, "lambda_metric_diversity", 0.05
+        )
         self.lambda_stp = config.lambda_stp
         self.enable_stp = config.enable_stp
         self.stp_num_triplets = config.stp_num_triplets
@@ -97,6 +100,7 @@ class AletheionV2Loss(nn.Module):
             "frontier": self.lambda_frontier,
             "mopsi": self.lambda_mopsi,
             "contrastive": self.lambda_contrastive,
+            "metric_diversity": self.lambda_metric_diversity,
         }
         self._decay_base_step = 0  # set on first forward (for resume)
 
@@ -173,6 +177,7 @@ class AletheionV2Loss(nn.Module):
         self.lambda_frontier = self._lambda_init["frontier"] * factor
         self.lambda_mopsi = self._lambda_init["mopsi"] * factor
         self.lambda_contrastive = self._lambda_init["contrastive"] * factor
+        self.lambda_metric_diversity = self._lambda_init["metric_diversity"] * factor
 
     def _get_annealing_factor(
         self, step: int, total_steps: int
@@ -279,6 +284,36 @@ class AletheionV2Loss(nn.Module):
                 dim=(-2, -1)
             ).mean()
             loss = loss + lambda_smooth * smoothness
+
+        return loss
+
+    def _metric_diversity_loss(self, G: torch.Tensor) -> torch.Tensor:
+        """Penaliza G(x) constante entre posicoes.
+
+        Para G constante [D, D]: retorna 0 (nao aplicavel).
+        Para G(x) [B, T, D, D]: incentiva variancia entre posicoes
+        via -log(var), bounded por clamp.
+
+        Args:
+            G: [D, D] ou [B, T, D, D] tensor metrico
+
+        Returns:
+            loss: escalar
+        """
+        if G.dim() == 2:
+            return torch.tensor(0.0, device=G.device)
+
+        # G: [B, T, D, D] -> flatten matrix dims
+        B, T, D, _ = G.shape
+        G_flat = G.reshape(B, T, D * D)
+
+        # Variancia media ao longo de T para cada elemento da matriz
+        var_per_elem = G_flat.var(dim=1)  # [B, D*D]
+        mean_var = var_per_elem.mean()
+
+        # -log(var + eps): gradiente forte quando var baixa, bounded
+        loss = -torch.log(mean_var + 1e-4)
+        loss = torch.clamp(loss, min=0.0)
 
         return loss
 
@@ -453,7 +488,7 @@ class AletheionV2Loss(nn.Module):
         if tomography is None:
             losses["total"] = self.lambda_ce * ce + self.lambda_stp * stp
             for key in [
-                "varo", "vi", "mad", "metric",
+                "varo", "vi", "mad", "metric", "metric_diversity",
                 "eidos", "conflict", "consciousness", "grounding",
                 "plasticity", "frontier", "mopsi", "contrastive",
             ]:
@@ -486,6 +521,16 @@ class AletheionV2Loss(nn.Module):
             )
         losses["metric"] = metric_loss
 
+        # Metric diversity (penaliza G(x) constante entre posicoes)
+        metric_div = torch.tensor(0.0, device=ce.device)
+        if (
+            self.lambda_metric_diversity > 0
+            and tomography is not None
+            and tomography.metric_G is not None
+        ):
+            metric_div = self._metric_diversity_loss(tomography.metric_G)
+        losses["metric_diversity"] = metric_div
+
         # --- Extension losses ---
         ext_losses = self._compute_extension_losses(
             tomography, mask, ce.device,
@@ -505,6 +550,7 @@ class AletheionV2Loss(nn.Module):
         total = total + anneal * self.lambda_vi * safe(vi)
         total = total + anneal * self.lambda_mad * safe(mad)
         total = total + anneal * self.lambda_metric * safe(metric_loss)
+        total = total + anneal * self.lambda_metric_diversity * safe(metric_div)
         total = total + anneal * self.lambda_eidos * safe(ext_losses["eidos"])
         total = total + anneal * self.lambda_conflict * safe(ext_losses["conflict"])
         total = total + anneal * self.lambda_consciousness * safe(ext_losses["consciousness"])

@@ -1,0 +1,103 @@
+# ~50M params - Real Geodesic epistemic fine-tuning on RTX 4090 24GB
+#
+# Fase 2b: G(x) posicao-dependente via MetricNet.
+# Resume do backbone: --resume checkpoints/50m_backbone/final.pt --finetune
+# fp32 obrigatorio para epistemic head.
+#
+# RTX 4090: 24GB VRAM
+#   batch=8 por GPU (50M + MetricNet cabe em fp32)
+#   grad_accum=8 -> effective batch = 8 * 8 = 64
+#   Throughput estimado: ~25-40K tok/s (MetricNet adiciona overhead)
+#   Tempo estimado: ~3.5-5.5h (500M tokens)
+#
+# Comando:
+#   python scripts/train_distributed.py \
+#     --config configs/scaling/50m_real_geodesic_rtx4090.yaml \
+#     --resume checkpoints/50m_backbone/final.pt --finetune
+
+# --- Modelo (identico ao backbone) ---
+vocab_size: 50257
+d_model: 512
+n_heads: 8
+n_layers: 8
+d_ff: 2048
+max_seq_len: 1024
+dropout: 0.05
+
+# --- Tomography ---
+enable_tomography: true
+
+# --- Metric Tensor ---
+metric_position_dependent: true
+metric_net_hidden: 32
+metric_net_n_quad: 5
+metric_net_lr_multiplier: 1.0 # era 5.0, remove o boost # era 10.0
+metric_max_condition: 50.0
+gamma_scaling_enabled: true  # Prop 4.2 DRM Relativistic Dynamics
+gamma_c_param: 2.236          # sqrt(5), diagonal maxima [0,1]^5
+
+# --- Training ---
+batch_size: 8
+learning_rate: 0.0001
+weight_decay: 0.01
+warmup_steps: 500
+grad_clip: 0.5
+total_tokens: 500_000_000
+log_interval: 50
+eval_interval: 500
+early_stopping_patience: 5
+save_interval: 500
+
+# --- Performance RTX 4090 (single GPU fp32) ---
+mixed_precision: "no"
+gradient_accumulation_steps: 8  # effective batch = 8 * 8 = 64
+gradient_checkpointing: false
+compile_model: false
+distributed: false
+fsdp: false
+
+# --- Annealing ---
+loss_warmup_fraction: 0.05 # era 0.05
+loss_ramp_fraction: 0.80
+
+# --- Lambdas ---
+lambda_ce: 1.5
+lambda_stp: 0.01
+lambda_varo: 0.01
+lambda_vi: 0.001
+lambda_mad: 0.005
+lambda_metric_reg: 0.01 # era 0.05
+lambda_metric_smoothness: 0.0001  # default 0.1 mata variacao posicional de G(x)
+lambda_metric_diversity: 0.05   # penaliza G(x) constante entre posicoes
+lambda_eidos: 0.0005
+lambda_conflict: 0.0005
+lambda_consciousness: 0.0003
+lambda_grounding: 0.0005
+lambda_plasticity: 0.0002
+lambda_frontier: 0.0002
+lambda_mopsi: 0.0003
+lambda_contrastive: 0.0003
+
+# --- Lambda Decay ---
+lambda_decay_mode: exponential
+lambda_decay_k: 0.0001
+
+# --- Data ---
+data_dir: data/350m_rtx4090
+streaming: false
+num_workers: 4
+prefetch_factor: 2
+
+# --- STP ---
+enable_stp: true
+stp_num_triplets: 1
+
+# --- Continual Learning ---
+enable_ewc: false
+enable_replay: false
+
+# --- Logging ---
+save_dir: checkpoints/50m_real_geodesic_6
+wandb_project: aletheion-v2-50m
+wandb_run_name: real_geodesic_rtx4090
+save_total_limit: 5

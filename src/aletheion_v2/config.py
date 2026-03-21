@@ -43,6 +43,8 @@ class AletheionV2Config:
     metric_net_lr_multiplier: float = 10.0  # LR multiplicador para MetricNet
     lambda_metric_smoothness: float = 0.1  # Suavidade do campo G(x)
     metric_max_condition: float = 50.0  # Condition number maximo
+    gamma_scaling_enabled: bool = False  # Gamma-scaling relativistic na geodesic
+    gamma_c_param: float = 2.236  # sqrt(5), diagonal maxima [0,1]^5
 
     # --- Directional Field ---
     dir_num_bins: int = 16  # Bins de entropia de atencao
@@ -129,6 +131,7 @@ class AletheionV2Config:
     lambda_vi: float = 0.01
     lambda_mad: float = 0.05
     lambda_metric_reg: float = 0.001
+    lambda_metric_diversity: float = 0.05
     lambda_eidos: float = 0.005
     lambda_conflict: float = 0.005
     lambda_consciousness: float = 0.003

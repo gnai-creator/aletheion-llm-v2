@@ -97,7 +97,11 @@ class EpistemicHead(nn.Module):
         )
 
         # DRM: Geodesic distance
-        self.geodesic_dist = GeodesicDistance(config.drm_dim)
+        self.geodesic_dist = GeodesicDistance(
+            config.drm_dim,
+            gamma_enabled=getattr(config, "gamma_scaling_enabled", False),
+            gamma_c_param=getattr(config, "gamma_c_param", 2.236),
+        )
 
         # MAD: Confidence
         self.mad_confidence = MADConfidence(
@@ -272,6 +276,7 @@ class EpistemicHead(nn.Module):
         metric_distance = self.geodesic_dist(
             coords, truth_centroid, G_constant,
             metric_net=self.metric_net,
+            anchors=self.manifold_emb.anchors.anchors,
         )
 
         # MAD: Confidence (usa G local se disponivel, senao G constante)
