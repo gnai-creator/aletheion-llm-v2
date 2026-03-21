@@ -399,6 +399,17 @@ class DistributedTrainer:
                 G_frob = G_batch.pow(2).sum(dim=(-2, -1)).sqrt()
                 metrics["metric_G_frob_mean"] = G_frob.mean().item()
 
+            # Gamma-scaling: fator medio de escala relativistic
+            if (
+                tomo.drm_coords is not None
+                and hasattr(self.raw_model, "epistemic_head")
+                and self.raw_model.epistemic_head.geodesic_dist.gamma_enabled
+            ):
+                from aletheion_v2.drm.geodesic_distance import _gamma_scale
+                anchor_tensor = self.raw_model.epistemic_head.manifold_emb.anchors.anchors
+                gamma = _gamma_scale(tomo.drm_coords, anchor_tensor)
+                metrics["avg_gamma_scale"] = gamma.mean().item()
+
             # --- Tier 1: Eidos ---
             if tomo.eidos_weights is not None:
                 metrics["avg_eidos_weight"] = tomo.eidos_weights.mean().item()
