@@ -1,0 +1,16 @@
+{
+  "func_name": "confidence",
+  "func_idx": 2,
+  "transform": "none",
+  "n_nodes": 0,
+  "n_edges": 0,
+  "n_splits": 0,
+  "n_merges": 0,
+  "is_tree": true,
+  "nodes": [],
+  "edges": [],
+  "f_std_raw": 0.19266101717948914,
+  "f_std_final": 0.19266101717948914,
+  "skipped": true,
+  "skip_reason": "insufficient_variation"
+}

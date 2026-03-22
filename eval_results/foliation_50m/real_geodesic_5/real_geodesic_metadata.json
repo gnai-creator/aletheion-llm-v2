@@ -1,0 +1,17 @@
+{
+  "checkpoint": "checkpoints/50m_real_geodesic_5/final.pt",
+  "step": 7629,
+  "label": "real_geodesic",
+  "n_vectors": 285696,
+  "vector_dims": [
+    "q1",
+    "q2",
+    "confidence",
+    "vi_magnitude",
+    "phi_total"
+  ],
+  "seq_len": 1024,
+  "max_tokens": 1000000,
+  "world_size": 1,
+  "timestamp": "2026-03-20 19:54:10"
+}
