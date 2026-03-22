@@ -31,10 +31,10 @@ enable_tomography: true
 metric_position_dependent: true
 metric_net_hidden: 32
 metric_net_n_quad: 5
-metric_net_lr_multiplier: 1.0 # era 5.0, remove o boost # era 10.0
+metric_net_lr_multiplier: 2.0 # era 1.0 # era 5.0, remove o boost # era 10.0
 metric_max_condition: 50.0
 gamma_scaling_enabled: true  # Prop 4.2 DRM Relativistic Dynamics
-gamma_c_param: 2.236          # sqrt(5), diagonal maxima [0,1]^5
+gamma_c_param: 4.0 # antes 2.236          # sqrt(5), diagonal maxima [0,1]^5
 
 # --- Training ---
 batch_size: 8
@@ -97,7 +97,7 @@ enable_ewc: false
 enable_replay: false
 
 # --- Logging ---
-save_dir: checkpoints/50m_real_geodesic_6
+save_dir: checkpoints/50m_real_geodesic_9
 wandb_project: aletheion-v2-50m
 wandb_run_name: real_geodesic_rtx4090
 save_total_limit: 5
