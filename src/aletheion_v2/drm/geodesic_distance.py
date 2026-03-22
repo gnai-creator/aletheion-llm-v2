@@ -127,7 +127,7 @@ class GeodesicDistance(nn.Module):
             gamma = _gamma_scale(
                 coords, anchors, c_param=self.gamma_c_param,
             )
-            dist = dist * gamma
+            dist = dist * gamma.detach()
 
         return dist
 
@@ -165,7 +165,7 @@ class GeodesicDistance(nn.Module):
             gamma = _gamma_scale(
                 midpoint, anchors, c_param=self.gamma_c_param,
             )
-            dist = dist * gamma
+            dist = dist * gamma.detach()
 
         return dist
 
@@ -219,6 +219,6 @@ class GeodesicDistance(nn.Module):
             gamma = _gamma_scale(
                 coords, anchors, c_param=self.gamma_c_param,
             )
-            dist = dist * gamma  # [B, T, A] * [B, T, 1]
+            dist = dist * gamma.detach()  # [B, T, A] * [B, T, 1]
 
         return dist
