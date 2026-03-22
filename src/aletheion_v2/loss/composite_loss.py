@@ -74,6 +74,9 @@ class AletheionV2Loss(nn.Module):
         self.lambda_metric_diversity = getattr(
             config, "lambda_metric_diversity", 0.05
         )
+        self.metric_diversity_warmup = getattr(
+            config, "lambda_metric_diversity_warmup_steps", 0
+        )
         self.lambda_stp = config.lambda_stp
         self.enable_stp = config.enable_stp
         self.stp_num_triplets = config.stp_num_triplets
@@ -522,9 +525,11 @@ class AletheionV2Loss(nn.Module):
         losses["metric"] = metric_loss
 
         # Metric diversity (penaliza G(x) constante entre posicoes)
+        # Warmup atrasado: so ativa apos metric_diversity_warmup steps
         metric_div = torch.tensor(0.0, device=ce.device)
         if (
             self.lambda_metric_diversity > 0
+            and step >= self.metric_diversity_warmup
             and tomography is not None
             and tomography.metric_G is not None
         ):

@@ -69,6 +69,7 @@ lambda_mad: 0.005
 lambda_metric_reg: 0.01 # era 0.05
 lambda_metric_smoothness: 0.0001  # default 0.1 mata variacao posicional de G(x)
 lambda_metric_diversity: 0.05   # penaliza G(x) constante entre posicoes
+lambda_metric_diversity_warmup_steps: 3000  # ativa diversity so apos MetricNet estabilizar
 lambda_eidos: 0.0005
 lambda_conflict: 0.0005
 lambda_consciousness: 0.0003
@@ -97,7 +98,7 @@ enable_ewc: false
 enable_replay: false
 
 # --- Logging ---
-save_dir: checkpoints/50m_real_geodesic_9
+save_dir: checkpoints/50m_real_geodesic_10
 wandb_project: aletheion-v2-50m
 wandb_run_name: real_geodesic_rtx4090
 save_total_limit: 5
