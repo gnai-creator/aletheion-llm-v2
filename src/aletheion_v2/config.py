@@ -133,6 +133,7 @@ class AletheionV2Config:
     lambda_metric_reg: float = 0.001
     lambda_metric_diversity: float = 0.05
     lambda_metric_diversity_warmup_steps: int = 0  # Steps antes de ativar diversity
+    target_metric_var: float = 0.001  # Alvo de variancia para diversity loss
     lambda_eidos: float = 0.005
     lambda_conflict: float = 0.005
     lambda_consciousness: float = 0.003

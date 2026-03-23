@@ -291,11 +291,12 @@ class AletheionV2Loss(nn.Module):
         return loss
 
     def _metric_diversity_loss(self, G: torch.Tensor) -> torch.Tensor:
-        """Penaliza G(x) constante entre posicoes.
+        """Penaliza G(x) com variancia longe do alvo.
 
         Para G constante [D, D]: retorna 0 (nao aplicavel).
-        Para G(x) [B, T, D, D]: incentiva variancia entre posicoes
-        via -log(var), bounded por clamp.
+        Para G(x) [B, T, D, D]: atractor estavel em target_var.
+        Gradiente empurra para cima quando var < target e para baixo
+        quando var > target.
 
         Args:
             G: [D, D] ou [B, T, D, D] tensor metrico
@@ -306,6 +307,8 @@ class AletheionV2Loss(nn.Module):
         if G.dim() == 2:
             return torch.tensor(0.0, device=G.device)
 
+        target_var = getattr(self.config, "target_metric_var", 0.001)
+
         # G: [B, T, D, D] -> flatten matrix dims
         B, T, D, _ = G.shape
         G_flat = G.reshape(B, T, D * D)
@@ -314,11 +317,7 @@ class AletheionV2Loss(nn.Module):
         var_per_elem = G_flat.var(dim=1)  # [B, D*D]
         mean_var = var_per_elem.mean()
 
-        # -log(var + eps): gradiente forte quando var baixa, bounded
-        loss = -torch.log(mean_var + 1e-4)
-        loss = torch.clamp(loss, min=0.0)
-
-        return loss
+        return (mean_var - target_var).pow(2)
 
     def _compute_extension_losses(
         self,
