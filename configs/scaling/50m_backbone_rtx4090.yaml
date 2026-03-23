@@ -1,0 +1,64 @@
+# ~50M params - Backbone training (CE+STP) on RTX 4090 24GB
+#
+# Arquitetura: d_model=512, n_heads=8, n_layers=8, d_ff=2048
+# Backbone puro: sem tomografia, sem epistemic head.
+# 1B tokens, bf16.
+#
+# RTX 4090: 24GB VRAM
+#   batch=16 por GPU (50M cabe facil em bf16)
+#   grad_accum=4 -> effective batch = 16 * 4 = 64
+#   Throughput estimado: ~50-80K tok/s
+#   Tempo estimado: ~3-6h
+
+# --- Modelo ---
+vocab_size: 50257
+d_model: 512
+n_heads: 8
+n_layers: 8
+d_ff: 2048
+max_seq_len: 1024
+dropout: 0.1
+
+# --- Tomography ---
+enable_tomography: false  # Backbone = CE + STP only
+
+# --- Training ---
+batch_size: 16
+learning_rate: 0.0005
+weight_decay: 0.01
+warmup_steps: 1000
+grad_clip: 1.0
+total_tokens: 1_000_000_000
+log_interval: 50
+eval_interval: 500
+early_stopping_patience: 10
+save_interval: 500
+
+# --- Performance RTX 4090 (single GPU bf16) ---
+mixed_precision: bf16
+gradient_accumulation_steps: 4  # effective batch = 16 * 4 = 64
+gradient_checkpointing: false   # 50M nao precisa
+compile_model: false
+distributed: false
+fsdp: false
+
+# --- Data ---
+data_dir: data/350m_rtx4090
+streaming: false
+num_workers: 4
+prefetch_factor: 2
+
+# --- STP ---
+enable_stp: true
+lambda_stp: 0.01
+stp_num_triplets: 1
+
+# --- Continual Learning ---
+enable_ewc: false
+enable_replay: false
+
+# --- Logging ---
+save_dir: checkpoints/50m_backbone
+wandb_project: aletheion-v2-50m
+wandb_run_name: backbone_rtx4090
+save_total_limit: 5

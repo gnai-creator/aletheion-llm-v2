@@ -11,3 +11,5 @@ checkpoints/
 *.ckpt
 data/
 .venv/
+*.npy
+reeb_phi.json
